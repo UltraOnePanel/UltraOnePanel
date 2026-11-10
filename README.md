@@ -64,3 +64,4 @@ journalctl -u facezila -f
 ## 📄 License
 
 Proprietary Software — All rights reserved © UltraOnePanel.
+

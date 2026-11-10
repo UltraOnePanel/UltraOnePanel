@@ -54,8 +54,8 @@ systemctl mask apache2 2>/dev/null || true
 
 # phpPgAdmin configuration
 if [ -f /etc/phppgadmin/config.inc.php ]; then
-  sed -i "s/\\$conf\\['extra_login_security'\\] = true;/\\$conf\\['extra_login_security'\\] = false;/g" /etc/phppgadmin/config.inc.php
-  sed -i "s/\\$conf\\['owned_only'\\] = true;/\\$conf\\['owned_only'\\] = false;/g" /etc/phppgadmin/config.inc.php
+  sed -i "s/\$conf\['extra_login_security'\] = true;/\$conf\['extra_login_security'\] = false;/g" /etc/phppgadmin/config.inc.php
+  sed -i "s/\$conf\['owned_only'\] = true;/\$conf\['owned_only'\] = false;/g" /etc/phppgadmin/config.inc.php
 fi
 
 for fpm in /etc/init.d/php*-fpm; do [ -e "$fpm" ] && systemctl enable --now "$(basename "$fpm")" 2>/dev/null || true; done
@@ -137,3 +137,4 @@ echo ""
 echo -e "  Service       : systemctl status facezila"
 echo -e "  Logs          : journalctl -u facezila -f"
 echo "=========================================================="
+
