@@ -14,7 +14,7 @@ die()  { echo -e "${RED}[ERROR] $*${NC}"; exit 1; }
 
 INSTALL_DIR="/opt/facezila"
 DATA_DIR="/var/lib/facezila"
-RELEASE_URL="${RELEASE_URL:-https://github.com/UltraOnePanel/UltraOnePanel/releases/latest/download/ultraonepanel-latest.tar.gz}"
+RELEASE_URL="${RELEASE_URL:-https://raw.githubusercontent.com/UltraOnePanel/UltraOnePanel/main/ultraonepanel-latest.tar.gz}"
 export DEBIAN_FRONTEND=noninteractive
 
 # 1. Privileges & OS verification
