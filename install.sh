@@ -241,8 +241,18 @@ WHM_PORT=2087
 SERVER_IP=${SERVER_IP}
 SSL_CERT=/etc/facezila/ssl/panel.crt
 SSL_KEY=/etc/facezila/ssl/panel.key
+LICENSE_SERVER_URL=https://185.70.184.125:2087
 EOF
+  if [ "${SERVER_IP}" = "185.70.184.125" ]; then
+    echo "IS_LICENSE_SERVER=true" >> "$INSTALL_DIR/.env"
+  fi
   chmod 600 "$INSTALL_DIR/.env"
+else
+  if grep -q "LICENSE_SERVER_URL" "$INSTALL_DIR/.env"; then
+    sed -i "s|LICENSE_SERVER_URL=.*|LICENSE_SERVER_URL=https://185.70.184.125:2087|" "$INSTALL_DIR/.env"
+  else
+    echo "LICENSE_SERVER_URL=https://185.70.184.125:2087" >> "$INSTALL_DIR/.env"
+  fi
 fi
 
 # 6. Firewall & Service Management
