@@ -27,8 +27,18 @@ SERVER_IP="$(curl -s -m 5 https://api.ipify.org || hostname -I | awk '{print $1}
 
 # 2. System dependencies & Core Hosting Stack
 step "[1/6] Installing system packages and hosting stack"
+
+# Unhold any held packages from prior hosting tools/cloud images
+if command -v apt-mark >/dev/null 2>&1; then
+  HELD_PKGS=$(apt-mark showhold 2>/dev/null || true)
+  if [ -n "$HELD_PKGS" ]; then
+    warn "Unholding held packages: $HELD_PKGS"
+    apt-mark unhold $HELD_PKGS >/dev/null 2>&1 || true
+  fi
+fi
+
 apt-get update -y
-apt-get install -y curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3 \
+apt-get install -y --allow-change-held-packages curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3 \
   nginx mariadb-server certbot \
   postgresql postgresql-contrib phppgadmin php-pgsql \
   php-fpm php-mysql php-cli php-curl php-mbstring php-xml php-zip php-gd php-intl php-bcmath php-opcache php-sqlite3 \
@@ -42,7 +52,7 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.spli
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
   apt-get update -y
-  apt-get install -y nodejs
+  apt-get install -y --allow-change-held-packages nodejs
 fi
 
 # Ensure SSL certificate is generated for Panel & Webmail
@@ -219,6 +229,13 @@ mkdir -p "$INSTALL_DIR" "$DATA_DIR" /var/log/facezila /etc/facezila/ssl
 curl -fsSL "$RELEASE_URL" -o /tmp/ultraonepanel.tar.gz
 tar -xzf /tmp/ultraonepanel.tar.gz -C "$INSTALL_DIR"
 rm -f /tmp/ultraonepanel.tar.gz
+
+# Deploy default skeleton files
+mkdir -p /etc/skel/public_html
+if [ -d "$INSTALL_DIR/src/templates/skel" ]; then
+  cp -f "$INSTALL_DIR"/src/templates/skel/* /etc/skel/public_html/ 2>/dev/null || true
+  chmod -R 755 /etc/skel/public_html 2>/dev/null || true
+fi
 
 step "[4/6] Installing production dependencies"
 cd "$INSTALL_DIR"
