@@ -28,14 +28,36 @@ SERVER_IP="$(curl -s -m 5 https://api.ipify.org || hostname -I | awk '{print $1}
 # 2. System dependencies & Core Hosting Stack
 step "[1/6] Installing system packages and hosting stack"
 
-# Wait if unattended-upgrades or background apt processes are running on first boot
-if command -v fuser >/dev/null 2>&1; then
+# Stop background update services so they don't contest package locks during installation
+systemctl stop unattended-upgrades apt-daily.service apt-daily.timer apt-daily-upgrade.service apt-daily-upgrade.timer 2>/dev/null || true
+
+# Helper to check if any APT or DPKG process is running or holding lock files
+is_apt_locked() {
+  if command -v fuser >/dev/null 2>&1; then
+    fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/cache/apt/archives/lock >/dev/null 2>&1 && return 0
+  fi
+  pgrep -f "(apt-get|dpkg|unattended-upgrade)" >/dev/null 2>&1 && return 0
+  return 1
+}
+
+# Wait if cloud-init, unattended-upgrades, or background apt processes are running on first boot
+if is_apt_locked; then
   wait_cycles=0
-  while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1 && [ $wait_cycles -lt 20 ]; do
-    echo "Waiting for background system package updates (apt/unattended-upgrades) to release lock..."
+  max_wait=100  # Up to 300s (5 minutes)
+  while is_apt_locked && [ $wait_cycles -lt $max_wait ]; do
+    echo "Waiting for background system updates (apt/unattended-upgrades) to release lock ($((wait_cycles * 3))s / 300s)..."
     sleep 3
     wait_cycles=$((wait_cycles + 1))
   done
+  if is_apt_locked; then
+    warn "Background package lock held for over 300s. Safely terminating background apt process..."
+    killall -9 apt-get apt unattended-upgrade-shutdown unattended-upgrades 2>/dev/null || true
+    if command -v fuser >/dev/null 2>&1; then
+      fuser -k -9 /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>/dev/null || true
+    fi
+    rm -f /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>/dev/null || true
+    dpkg --configure -a 2>/dev/null || true
+  fi
 fi
 
 # Pre-seed postfix debconf selections for completely non-interactive installation
@@ -68,8 +90,8 @@ if command -v apt-mark >/dev/null 2>&1; then
   fi
 fi
 
-apt-get update -y
-apt-get install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3 \
+apt-get -o DPkg::Lock::Timeout=300 update -y
+apt-get -o DPkg::Lock::Timeout=300 install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3 \
   nginx mariadb-server certbot \
   postgresql postgresql-contrib phppgadmin php-pgsql \
   php-fpm php-mysql php-cli php-curl php-mbstring php-xml php-zip php-gd php-intl php-bcmath php-opcache php-sqlite3 \
@@ -82,8 +104,8 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.spli
   mkdir -p /etc/apt/keyrings
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
-  apt-get update -y
-  apt-get install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs
+  apt-get -o DPkg::Lock::Timeout=300 update -y
+  apt-get -o DPkg::Lock::Timeout=300 install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs
 fi
 
 # Ensure SSL certificate is generated for Panel & Webmail
