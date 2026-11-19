@@ -90,13 +90,36 @@ if command -v apt-mark >/dev/null 2>&1; then
   fi
 fi
 
+# Helper to install packages with automatic retry and package-list refresh on mirror 404s
+apt_install_with_retry() {
+  local pkgs=("$@")
+  local attempt=1
+  local max_attempts=4
+  while [ "$attempt" -le "$max_attempts" ]; do
+    if apt-get -o DPkg::Lock::Timeout=300 install -y --allow-change-held-packages --fix-missing \
+      -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" "${pkgs[@]}"; then
+      return 0
+    fi
+    warn "Package download or installation encountered a mirror sync error / 404 (attempt $attempt/$max_attempts)."
+    warn "Refreshing package index from mirrors and retrying..."
+    sleep 3
+    apt-get -o DPkg::Lock::Timeout=300 update -y || true
+    attempt=$((attempt + 1))
+  done
+  die "Failed to install required system packages after $max_attempts attempts."
+}
+
 apt-get -o DPkg::Lock::Timeout=300 update -y
-apt-get -o DPkg::Lock::Timeout=300 install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3 \
-  nginx mariadb-server certbot \
-  postgresql postgresql-contrib phppgadmin php-pgsql \
-  php-fpm php-mysql php-cli php-curl php-mbstring php-xml php-zip php-gd php-intl php-bcmath php-opcache php-sqlite3 \
-  postfix dovecot-core dovecot-imapd dovecot-pop3d dovecot-lmtpd ssl-cert \
+
+CORE_PACKAGES=(
+  curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3
+  nginx mariadb-server certbot
+  postgresql postgresql-contrib phppgadmin php-pgsql
+  php-fpm php-mysql php-cli php-curl php-mbstring php-xml php-zip php-gd php-intl php-bcmath php-opcache php-sqlite3
+  postfix dovecot-core dovecot-imapd dovecot-pop3d dovecot-lmtpd ssl-cert
   bind9 bind9utils vsftpd ufw fail2ban
+)
+apt_install_with_retry "${CORE_PACKAGES[@]}"
 
 # Install Node.js 20 LTS if not present
 if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 18 ]; then
@@ -105,7 +128,7 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.spli
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
   apt-get -o DPkg::Lock::Timeout=300 update -y
-  apt-get -o DPkg::Lock::Timeout=300 install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs
+  apt_install_with_retry nodejs
 fi
 
 # Ensure SSL certificate is generated for Panel & Webmail
