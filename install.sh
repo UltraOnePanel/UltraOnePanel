@@ -28,6 +28,16 @@ SERVER_IP="$(curl -s -m 5 https://api.ipify.org || hostname -I | awk '{print $1}
 # 2. System dependencies & Core Hosting Stack
 step "[1/6] Installing system packages and hosting stack"
 
+# Wait if unattended-upgrades or background apt processes are running on first boot
+if command -v fuser >/dev/null 2>&1; then
+  wait_cycles=0
+  while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1 && [ $wait_cycles -lt 20 ]; do
+    echo "Waiting for background system package updates (apt/unattended-upgrades) to release lock..."
+    sleep 3
+    wait_cycles=$((wait_cycles + 1))
+  done
+fi
+
 # Pre-seed postfix debconf selections for completely non-interactive installation
 echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections 2>/dev/null || true
 echo "postfix postfix/mailname string localhost" | debconf-set-selections 2>/dev/null || true
@@ -59,7 +69,7 @@ if command -v apt-mark >/dev/null 2>&1; then
 fi
 
 apt-get update -y
-apt-get install -y --allow-change-held-packages curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3 \
+apt-get install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" curl wget ca-certificates gnupg lsb-release tar zip unzip openssl sqlite3 cron build-essential python3 \
   nginx mariadb-server certbot \
   postgresql postgresql-contrib phppgadmin php-pgsql \
   php-fpm php-mysql php-cli php-curl php-mbstring php-xml php-zip php-gd php-intl php-bcmath php-opcache php-sqlite3 \
@@ -73,7 +83,7 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.spli
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
   apt-get update -y
-  apt-get install -y --allow-change-held-packages nodejs
+  apt-get install -y --allow-change-held-packages -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs
 fi
 
 # Ensure SSL certificate is generated for Panel & Webmail
@@ -295,9 +305,10 @@ fi
 
 # 6. Firewall & Service Management
 step "[6/6] Configuring firewall and systemd service"
-for port in 80/tcp 443/tcp 2083/tcp 2087/tcp 2096/tcp 21/tcp 25/tcp 465/tcp 587/tcp 993/tcp 995/tcp 53; do
+for port in 22/tcp 80/tcp 443/tcp 2083/tcp 2087/tcp 2096/tcp 21/tcp 25/tcp 465/tcp 587/tcp 993/tcp 995/tcp 53; do
   ufw allow "$port" >/dev/null 2>&1 || true
 done
+ufw allow ssh >/dev/null 2>&1 || true
 ufw --force enable >/dev/null 2>&1 || true
 
 cat > /etc/systemd/system/facezila.service <<EOF
