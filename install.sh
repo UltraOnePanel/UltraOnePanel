@@ -170,7 +170,13 @@ ini_set('session.cookie_path', '/phpmyadmin/');
 \$cfg['PmaAbsoluteUri'] = '/phpmyadmin/';
 \$i = 0;
 \$i++;
-\$cfg['Servers'][\$i]['auth_type'] = 'cookie';
+if (!empty(\$_COOKIE['SignonSession'])) {
+    \$cfg['Servers'][\$i]['auth_type'] = 'signon';
+    \$cfg['Servers'][\$i]['SignonSession'] = 'SignonSession';
+    \$cfg['Servers'][\$i]['SignonURL'] = '/phpmyadmin/index.php';
+} else {
+    \$cfg['Servers'][\$i]['auth_type'] = 'cookie';
+}
 \$cfg['Servers'][\$i]['host'] = '127.0.0.1';
 \$cfg['Servers'][\$i]['compress'] = false;
 \$cfg['Servers'][\$i]['AllowNoPassword'] = false;
@@ -178,6 +184,54 @@ ini_set('session.cookie_path', '/phpmyadmin/');
 \$cfg['SaveDir'] = '';
 \$cfg['TempDir'] = '/tmp';
 EOF
+
+  cat > /var/www/database-admin/phpmyadmin/sso.php << 'EOF_PMA_SSO'
+<?php
+@ini_set('display_errors', '0');
+error_reporting(0);
+define('PMA_SSO_SECRET', 'UltraOnePanel_PMA_Secret_Key_2026_Secure');
+\$token = isset(\$_GET['token']) ? trim(\$_GET['token']) : '';
+\$db = isset(\$_GET['db']) ? trim(\$_GET['db']) : '';
+if (empty(\$token)) { http_response_code(403); die('Access Denied: Missing SSO token'); }
+\$parts = explode('.', \$token);
+if (count(\$parts) !== 3) { http_response_code(403); die('Invalid Token'); }
+list(\$expStr, \$b64Payload, \$sig) = \$parts;
+if (time() > intval(\$expStr)) { http_response_code(403); die('Token Expired'); }
+if (!hash_equals(hash_hmac('sha256', \$expStr . '.' . \$b64Payload, PMA_SSO_SECRET), \$sig)) { http_response_code(403); die('Invalid Signature'); }
+\$decoded = base64_decode(\$b64Payload);
+if (\$decoded !== false && !empty(\$decoded)) {
+    if (strpos(\$decoded, ':') !== false) { list(\$pDb) = explode(':', \$decoded, 2); if (!empty(\$pDb)) \$db = \$pDb; }
+    else { \$db = \$decoded; }
+}
+\$mysqlRoot = '';
+if (file_exists('/www/server/panel/data/default.db')) {
+    \$out = @shell_exec('sqlite3 /www/server/panel/data/default.db "SELECT mysql_root FROM config LIMIT 1;" 2>/dev/null');
+    if (\$out) \$mysqlRoot = trim(\$out);
+}
+if (empty(\$mysqlRoot) && file_exists('/root/.mysql_secret')) {
+    \$out = @file_get_contents('/root/.mysql_secret');
+    if (\$out) \$mysqlRoot = trim(\$out);
+}
+if (empty(\$mysqlRoot) && file_exists('/etc/mysql/debian.cnf')) {
+    preg_match('/password\\s*=\\s*(\\S+)/', file_get_contents('/etc/mysql/debian.cnf'), \$m);
+    if (!empty(\$m[1])) \$mysqlRoot = \$m[1];
+}
+ini_set('session.use_cookies', 'true');
+session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'domain' => '', 'secure' => false, 'httponly' => true, 'samesite' => 'Lax']);
+session_name('SignonSession');
+session_start();
+\$_SESSION['PMA_single_signon_user'] = 'root';
+\$_SESSION['PMA_single_signon_password'] = \$mysqlRoot;
+\$_SESSION['PMA_single_signon_host'] = 'localhost';
+\$_SESSION['PMA_single_signon_port'] = '';
+\$_SESSION['PMA_single_signon_cfgupdate'] = [];
+\$_SESSION['PMA_single_signon_HMAC_secret'] = hash('sha1', uniqid((string)mt_rand(), true));
+session_write_close();
+\$redirect = !empty(\$db) ? '/phpmyadmin/index.php?route=/database/structure&db=' . urlencode(\$db) : '/phpmyadmin/index.php';
+header('Location: ' . \$redirect);
+exit;
+EOF_PMA_SSO
+  chmod 644 /var/www/database-admin/phpmyadmin/sso.php
 fi
 
 if [ -d /usr/share/phppgadmin ]; then
