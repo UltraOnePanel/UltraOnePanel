@@ -28,6 +28,27 @@ SERVER_IP="$(curl -s -m 5 https://api.ipify.org || hostname -I | awk '{print $1}
 # 2. System dependencies & Core Hosting Stack
 step "[1/6] Installing system packages and hosting stack"
 
+# Pre-seed postfix debconf selections for completely non-interactive installation
+echo "postfix postfix/main_mailer_type select Internet Site" | debconf-set-selections 2>/dev/null || true
+echo "postfix postfix/mailname string localhost" | debconf-set-selections 2>/dev/null || true
+
+# Fix incompatible dovecot.conf from prior hosting stacks or Dovecot 2.4 remnants
+if [ -f /etc/dovecot/dovecot.conf ] && grep -q "dovecot_config_version" /etc/dovecot/dovecot.conf 2>/dev/null; then
+  warn "Incompatible dovecot.conf detected. Resetting to standard Ubuntu configuration..."
+  mv /etc/dovecot/dovecot.conf /etc/dovecot/dovecot.conf.bak 2>/dev/null || true
+  mkdir -p /etc/dovecot
+  cat > /etc/dovecot/dovecot.conf <<'EOF'
+!include_try /usr/share/dovecot/protocols.d/*.protocol
+listen = *, ::
+base_dir = /var/run/dovecot/
+!include conf.d/*.conf
+!include_try local.conf
+EOF
+fi
+
+# Recover from any interrupted dpkg runs
+dpkg --configure -a 2>/dev/null || true
+
 # Unhold any held packages from prior hosting tools/cloud images
 if command -v apt-mark >/dev/null 2>&1; then
   HELD_PKGS=$(apt-mark showhold 2>/dev/null || true)
