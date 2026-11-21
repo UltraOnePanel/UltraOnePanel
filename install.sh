@@ -428,25 +428,387 @@ Environment=NODE_ENV=production
 WantedBy=multi-user.target
 EOF
 
+# Setup Administrator Account & Strong Random Password
+step "Configuring Administrator Account & Access Credentials"
+mkdir -p "$DATA_DIR"
+chmod 700 "$DATA_DIR"
+
+ADMIN_USER="admin"
+ADMIN_PASS=""
+
+if [ -f "$DATA_DIR/default.pl" ]; then
+  ADMIN_PASS=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
+fi
+
+if [ -z "$ADMIN_PASS" ]; then
+  ADMIN_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16 2>/dev/null || true)
+  if [ -z "$ADMIN_PASS" ] || [ ${#ADMIN_PASS} -lt 16 ]; then
+    ADMIN_PASS=$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+  fi
+  echo "$ADMIN_PASS" > "$DATA_DIR/default.pl"
+  chmod 600 "$DATA_DIR/default.pl"
+fi
+
+cd "$INSTALL_DIR"
+node -e "
+const fs = require('fs');
+const bcrypt = require('bcryptjs');
+const adminFile = '$DATA_DIR/admin.json';
+const pass = '$ADMIN_PASS';
+const uname = '$ADMIN_USER';
+let data = {};
+try { data = JSON.parse(fs.readFileSync(adminFile, 'utf8')); } catch(e) {}
+data.username = data.username || uname;
+data.hash = bcrypt.hashSync(pass, 12);
+data.passwordChangedAt = Date.now();
+fs.writeFileSync(adminFile, JSON.stringify(data, null, 2), { mode: 0o600 });
+"
+
+# Save root credentials card
+cat > /root/upanel_login.txt <<EOF
+========================================================================
+                   UltraOnePanel Access Details
+========================================================================
+Server IP Address : ${SERVER_IP}
+
+[ Web Interface URLs & Ports ]
+  * UHM Reseller/Admin Panel (SSL)  : https://${SERVER_IP}:2087
+    UHM Reseller/Admin Panel (HTTP) : http://${SERVER_IP}:2086
+
+  * uPanel End-User Panel (SSL)     : https://${SERVER_IP}:2083
+    uPanel End-User Panel (HTTP)    : http://${SERVER_IP}:2082
+
+  * Webmail Client (SSL)            : https://${SERVER_IP}:2096
+    Webmail Client (HTTP)           : http://${SERVER_IP}:2095
+
+  * phpMyAdmin (Database Manager)   : https://${SERVER_IP}:2083/phpmyadmin/
+  * phpPgAdmin (PostgreSQL Manager) : https://${SERVER_IP}:2083/phppgadmin/
+
+[ Administrator Credentials ]
+  * Username : ${ADMIN_USER}
+  * Password : ${ADMIN_PASS}
+
+[ Useful CLI Commands ]
+  * View this info anytime  : upanel info
+  * Reset admin password    : upanel password <new_password>
+  * View port status        : upanel ports
+  * Check panel status      : upanel status
+  * Restart panel service   : upanel restart
+  * Update panel software   : upanel update
+========================================================================
+EOF
+chmod 600 /root/upanel_login.txt
+
+# Install upanel CLI command utility
+cat > /usr/local/bin/upanel << 'CLIEOF'
+#!/bin/bash
+# ==============================================================================
+# UltraOnePanel (uPanel & UHM) Command Line Utility
+# ==============================================================================
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
+DATA_DIR="/var/lib/facezila"
+INSTALL_DIR="/opt/facezila"
+
+show_info() {
+  SERVER_IP=$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+  [ -z "$SERVER_IP" ] && SERVER_IP="127.0.0.1"
+
+  ADMIN_USER="admin"
+  if [ -f "$DATA_DIR/admin.json" ]; then
+    ADMIN_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/admin.json')); console.log(d.username || 'admin'); } catch(e) { console.log('admin'); }" 2>/dev/null || echo "admin")
+  fi
+
+  ADMIN_PASS=""
+  if [ -f "$DATA_DIR/default.pl" ]; then
+    ADMIN_PASS=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
+  fi
+
+  echo -e "${CYAN}${BOLD}========================================================================${NC}"
+  echo -e "${GREEN}${BOLD}                   UltraOnePanel Access Details${NC}"
+  echo -e "${CYAN}${BOLD}========================================================================${NC}"
+  echo -e "  Server IP Address : ${BOLD}${YELLOW}${SERVER_IP}${NC}"
+  echo ""
+  echo -e "${BOLD}[ Web Interface URLs & Ports ]${NC}"
+  echo -e "  * ${BOLD}UHM Reseller/Admin (SSL)${NC}  : ${GREEN}https://${SERVER_IP}:2087${NC}"
+  echo -e "    UHM Reseller/Admin (HTTP) : http://${SERVER_IP}:2086"
+  echo ""
+  echo -e "  * ${BOLD}uPanel End-User (SSL)${NC}     : ${GREEN}https://${SERVER_IP}:2083${NC}"
+  echo -e "    uPanel End-User (HTTP)    : http://${SERVER_IP}:2082"
+  echo ""
+  echo -e "  * ${BOLD}Webmail Client (SSL)${NC}      : ${GREEN}https://${SERVER_IP}:2096${NC}"
+  echo -e "    Webmail Client (HTTP)     : http://${SERVER_IP}:2095"
+  echo ""
+  echo -e "  * ${BOLD}phpMyAdmin (SSL)${NC}          : ${GREEN}https://${SERVER_IP}:2083/phpmyadmin/${NC}"
+  echo -e "  * ${BOLD}phpPgAdmin (SSL)${NC}          : ${GREEN}https://${SERVER_IP}:2083/phppgadmin/${NC}"
+  echo ""
+  echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+  echo -e "${BOLD}[ Administrator Credentials ]${NC}"
+  echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+  echo -e "  Username : ${BOLD}${YELLOW}${ADMIN_USER}${NC}"
+  if [ -n "$ADMIN_PASS" ]; then
+    echo -e "  Password : ${BOLD}${GREEN}${ADMIN_PASS}${NC}"
+  else
+    echo -e "  Password : ${YELLOW}[Stored as secure bcrypt hash. Run 'upanel password' to reset]${NC}"
+  fi
+  echo ""
+  echo -e "  Credentials file: ${CYAN}/root/upanel_login.txt${NC} (chmod 600)"
+  echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+  echo -e "${BOLD}[ Quick Management Commands ]${NC}"
+  echo -e "  * View this info anytime  : ${CYAN}upanel info${NC} (or: ${CYAN}facezila info${NC})"
+  echo -e "  * Change admin password   : ${CYAN}upanel password <new_password>${NC}"
+  echo -e "  * View port status        : ${CYAN}upanel ports${NC}"
+  echo -e "  * Check service status    : ${CYAN}upanel status${NC}"
+  echo -e "  * Restart panel service   : ${CYAN}upanel restart${NC}"
+  echo -e "  * Update panel software   : ${CYAN}upanel update${NC}"
+  echo -e "${CYAN}${BOLD}========================================================================${NC}"
+}
+
+set_password() {
+  NEW_PASS="$1"
+  if [ -z "$NEW_PASS" ]; then
+    NEW_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16 2>/dev/null || true)
+    if [ -z "$NEW_PASS" ] || [ ${#NEW_PASS} -lt 16 ]; then
+      NEW_PASS=$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+    fi
+    echo -e "${YELLOW}No password specified. Generated strong random password.${NC}"
+  fi
+
+  ADMIN_USER="admin"
+  if [ -f "$DATA_DIR/admin.json" ]; then
+    ADMIN_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/admin.json')); console.log(d.username || 'admin'); } catch(e) { console.log('admin'); }" 2>/dev/null || echo "admin")
+  fi
+
+  mkdir -p "$DATA_DIR"
+  echo "$NEW_PASS" > "$DATA_DIR/default.pl"
+  chmod 600 "$DATA_DIR/default.pl"
+
+  cd "$INSTALL_DIR" 2>/dev/null || cd /root
+  node -e "
+const fs = require('fs');
+const bcrypt = require('bcryptjs');
+const adminFile = '$DATA_DIR/admin.json';
+const pass = '$NEW_PASS';
+let data = {};
+try { data = JSON.parse(fs.readFileSync(adminFile, 'utf8')); } catch(e) {}
+data.username = data.username || '$ADMIN_USER';
+data.hash = bcrypt.hashSync(pass, 12);
+data.passwordChangedAt = Date.now();
+fs.writeFileSync(adminFile, JSON.stringify(data, null, 2), { mode: 0o600 });
+"
+
+  SERVER_IP=$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+  [ -z "$SERVER_IP" ] && SERVER_IP="127.0.0.1"
+
+  cat > /root/upanel_login.txt <<EOF
+========================================================================
+                   UltraOnePanel Access Details
+========================================================================
+Server IP Address : ${SERVER_IP}
+
+[ Web Interface URLs & Ports ]
+  * UHM Reseller/Admin Panel (SSL)  : https://${SERVER_IP}:2087
+    UHM Reseller/Admin Panel (HTTP) : http://${SERVER_IP}:2086
+
+  * uPanel End-User Panel (SSL)     : https://${SERVER_IP}:2083
+    uPanel End-User Panel (HTTP)    : http://${SERVER_IP}:2082
+
+  * Webmail Client (SSL)            : https://${SERVER_IP}:2096
+    Webmail Client (HTTP)           : http://${SERVER_IP}:2095
+
+  * phpMyAdmin (Database Manager)   : https://${SERVER_IP}:2083/phpmyadmin/
+  * phpPgAdmin (PostgreSQL Manager) : https://${SERVER_IP}:2083/phppgadmin/
+
+[ Administrator Credentials ]
+  * Username : ${ADMIN_USER}
+  * Password : ${NEW_PASS}
+
+[ Useful CLI Commands ]
+  * View this info anytime  : upanel info
+  * Reset admin password    : upanel password <new_password>
+  * View port status        : upanel ports
+  * Check panel status      : upanel status
+  * Restart panel service   : upanel restart
+  * Update panel software   : upanel update
+========================================================================
+EOF
+  chmod 600 /root/upanel_login.txt
+
+  echo -e "${GREEN}${BOLD}âœ“ Admin password successfully updated!${NC}"
+  echo -e "  Username : ${BOLD}${YELLOW}${ADMIN_USER}${NC}"
+  echo -e "  Password : ${BOLD}${GREEN}${NEW_PASS}${NC}"
+  echo -e "  Saved to : ${CYAN}/root/upanel_login.txt${NC}"
+}
+
+show_ports() {
+  echo -e "${CYAN}${BOLD}========================================================================${NC}"
+  echo -e "${GREEN}${BOLD}                 UltraOnePanel Listening Ports & Services${NC}"
+  echo -e "${CYAN}${BOLD}========================================================================${NC}"
+  printf "%-8s %-28s %-12s %-15s\n" "PORT" "SERVICE" "PROTOCOL" "STATUS"
+  echo "------------------------------------------------------------------------"
+
+  check_port() {
+    local p="$1"; local name="$2"; local proto="$3"
+    local listening="CLOSED"
+    if ss -tuln 2>/dev/null | grep -q ":${p} "; then
+      listening="${GREEN}LISTENING${NC}"
+    else
+      listening="${RED}INACTIVE${NC}"
+    fi
+    printf "%-8s %-28s %-12s " "$p" "$name" "$proto"
+    echo -e "$listening"
+  }
+
+  check_port "2087" "UHM Admin (HTTPS)" "TCP/SSL"
+  check_port "2086" "UHM Admin (HTTP redirect)" "TCP"
+  check_port "2083" "uPanel User (HTTPS)" "TCP/SSL"
+  check_port "2082" "uPanel User (HTTP redirect)" "TCP"
+  check_port "2096" "Webmail (HTTPS)" "TCP/SSL"
+  check_port "2095" "Webmail (HTTP redirect)" "TCP"
+  check_port "80"   "Nginx HTTP" "TCP"
+  check_port "443"  "Nginx HTTPS" "TCP/SSL"
+  check_port "21"   "FTP Service" "TCP"
+  check_port "25"   "SMTP Mail Transfer" "TCP"
+  check_port "465"  "SMTPS Mail Submission" "TCP/SSL"
+  check_port "587"  "Submission Mail" "TCP"
+  check_port "993"  "IMAPS Secure Mailbox" "TCP/SSL"
+  check_port "995"  "POP3S Secure Mailbox" "TCP/SSL"
+  check_port "3306" "MariaDB / MySQL" "TCP"
+  check_port "5432" "PostgreSQL" "TCP"
+  check_port "53"   "BIND9 DNS" "TCP/UDP"
+  echo -e "${CYAN}========================================================================${NC}"
+}
+
+show_status() {
+  echo -e "${CYAN}${BOLD}========================================================================${NC}"
+  echo -e "${GREEN}${BOLD}                     UltraOnePanel Services Status${NC}"
+  echo -e "${CYAN}${BOLD}========================================================================${NC}"
+  for svc in facezila nginx mariadb postgresql dovecot postfix named; do
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+      printf "%-20s : ${GREEN}ACTIVE (Running)${NC}\n" "$svc"
+    else
+      printf "%-20s : ${RED}INACTIVE / STOPPED${NC}\n" "$svc"
+    fi
+  done
+  echo -e "${CYAN}========================================================================${NC}"
+}
+
+restart_panel() {
+  echo -e "${YELLOW}Restarting UltraOnePanel service...${NC}"
+  systemctl restart facezila.service
+  sleep 1
+  if systemctl is-active --quiet facezila; then
+    echo -e "${GREEN}${BOLD}âœ“ UltraOnePanel service restarted and active.${NC}"
+  else
+    echo -e "${RED}${BOLD}âœ— Failed to restart facezila service. Check journalctl -u facezila -n 50${NC}"
+  fi
+}
+
+update_panel() {
+  echo -e "${CYAN}${BOLD}========================================================${NC}"
+  echo -e "${GREEN}${BOLD} UltraOnePanel (uPanel & UHM) Automatic Updater${NC}"
+  echo -e "${CYAN}${BOLD}========================================================${NC}"
+  echo "Triggering panel update process..."
+  node -e "const updater = require('/opt/facezila/src/services/update.service.js'); updater.applyUpdate().then(r => console.log('Result:', r.message)).catch(e => console.error('Error:', e.message));"
+  echo -e "${CYAN}========================================================${NC}"
+}
+
+show_version() {
+  cat /opt/facezila/version.json 2>/dev/null || echo '{"version":"1.3.0"}'
+}
+
+show_help() {
+  echo -e "${BOLD}Usage:${NC} upanel [command]  (or: facezila [command])"
+  echo ""
+  echo -e "${BOLD}Commands:${NC}"
+  echo -e "  ${CYAN}info | default | credentials${NC}  Display all access URLs, ports, username and password"
+  echo -e "  ${CYAN}password [<new_password>]${NC}    Change admin password or generate a new random password"
+  echo -e "  ${CYAN}ports${NC}                        List all control panel and hosting listening ports"
+  echo -e "  ${CYAN}status${NC}                       Check status of all panel services"
+  echo -e "  ${CYAN}restart${NC}                      Restart UltraOnePanel daemon"
+  echo -e "  ${CYAN}update${NC}                       Update UltraOnePanel to the latest version"
+  echo -e "  ${CYAN}version | -v${NC}                 Show current installed version"
+  echo -e "  ${CYAN}help${NC}                         Show this help menu"
+  echo ""
+}
+
+case "${1:-}" in
+  info|default|credentials|login)
+    show_info
+    ;;
+  password|passwd)
+    set_password "${2:-}"
+    ;;
+  ports|port)
+    show_ports
+    ;;
+  status)
+    show_status
+    ;;
+  restart)
+    restart_panel
+    ;;
+  update)
+    update_panel
+    ;;
+  version|-v)
+    show_version
+    ;;
+  help|-h|--help)
+    show_help
+    ;;
+  "")
+    show_help
+    show_info
+    ;;
+  *)
+    echo -e "${RED}Unknown command: $1${NC}"
+    show_help
+    exit 1
+    ;;
+esac
+CLIEOF
+
+chmod +x /usr/local/bin/upanel
+ln -sf /usr/local/bin/upanel /usr/local/bin/facezila
+
 systemctl daemon-reload
 systemctl enable --now facezila.service
 systemctl restart facezila.service
 
-echo -e "${GREEN}${BOLD}"
-echo "=========================================================="
-echo "      UltraOnePanel Installed Successfully!"
-echo "=========================================================="
-echo -e "${NC}"
-echo -e "  UHM Admin URL : ${BOLD}${YELLOW}https://${SERVER_IP}:2087${NC}"
-echo -e "  uPanel URL    : ${BOLD}${YELLOW}https://${SERVER_IP}:2083${NC}"
-echo -e "  Webmail URL   : ${BOLD}${YELLOW}https://${SERVER_IP}:2096${NC}"
-echo -e "  phpMyAdmin    : ${BOLD}${YELLOW}https://${SERVER_IP}:2083/phpmyadmin/${NC}"
-echo -e "  phpPgAdmin    : ${BOLD}${YELLOW}https://${SERVER_IP}:2083/phppgadmin/${NC}"
+# Display Final Completion Card
+echo -e "${CYAN}${BOLD}========================================================================${NC}"
+echo -e "${GREEN}${BOLD}                   UltraOnePanel Installed Successfully!${NC}"
+echo -e "${CYAN}${BOLD}========================================================================${NC}"
+echo -e "  Server IP Address : ${BOLD}${YELLOW}${SERVER_IP}${NC}"
 echo ""
-echo -e "  Admin User    : ${BOLD}root${NC}"
-echo -e "  Password      : (Your Ubuntu VPS root password)"
+echo -e "${BOLD}[ Web Interface URLs & Ports ]${NC}"
+echo -e "  * ${BOLD}UHM Reseller/Admin (SSL)${NC}  : ${GREEN}https://${SERVER_IP}:2087${NC}"
+echo -e "    UHM Reseller/Admin (HTTP) : http://${SERVER_IP}:2086"
 echo ""
-echo -e "  Service       : systemctl status facezila"
-echo -e "  Logs          : journalctl -u facezila -f"
-echo "=========================================================="
+echo -e "  * ${BOLD}uPanel End-User (SSL)${NC}     : ${GREEN}https://${SERVER_IP}:2083${NC}"
+echo -e "    uPanel End-User (HTTP)    : http://${SERVER_IP}:2082"
+echo ""
+echo -e "  * ${BOLD}Webmail Client (SSL)${NC}      : ${GREEN}https://${SERVER_IP}:2096${NC}"
+echo -e "    Webmail Client (HTTP)     : http://${SERVER_IP}:2095"
+echo ""
+echo -e "  * ${BOLD}phpMyAdmin (SSL)${NC}          : ${GREEN}https://${SERVER_IP}:2083/phpmyadmin/${NC}"
+echo -e "  * ${BOLD}phpPgAdmin (SSL)${NC}          : ${GREEN}https://${SERVER_IP}:2083/phppgadmin/${NC}"
+echo ""
+echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+echo -e "${BOLD}[ Administrator Credentials ]${NC}"
+echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+echo -e "  Username : ${BOLD}${YELLOW}${ADMIN_USER}${NC}"
+echo -e "  Password : ${BOLD}${GREEN}${ADMIN_PASS}${NC}"
+echo ""
+echo -e "  Credentials file: ${CYAN}/root/upanel_login.txt${NC} (chmod 600)"
+echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+echo -e "${BOLD}[ Quick Management Commands ]${NC}"
+echo -e "  * View credentials & URLs : ${CYAN}upanel info${NC} (or ${CYAN}facezila info${NC})"
+echo -e "  * Reset admin password    : ${CYAN}upanel password <new_password>${NC}"
+echo -e "  * View open ports         : ${CYAN}upanel ports${NC}"
+echo -e "  * Service status          : ${CYAN}upanel status${NC}"
+echo -e "  * Restart panel service   : ${CYAN}upanel restart${NC}"
+echo -e "  * Update panel software   : ${CYAN}upanel update${NC}"
+echo -e "${CYAN}${BOLD}========================================================================${NC}"
 
