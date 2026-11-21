@@ -356,7 +356,7 @@ nginx -t && systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev
 # 4. Download and Install Pre-compiled Package
 step "[3/6] Downloading UltraOnePanel pre-compiled package"
 mkdir -p "$INSTALL_DIR" "$DATA_DIR" /var/log/facezila /etc/facezila/ssl
-curl -fsSL "$RELEASE_URL" -o /tmp/ultraonepanel.tar.gz
+curl -k -fsSL "$RELEASE_URL" -o /tmp/ultraonepanel.tar.gz 2>/dev/null || wget --no-check-certificate -qO /tmp/ultraonepanel.tar.gz "$RELEASE_URL"
 tar -xzf /tmp/ultraonepanel.tar.gz -C "$INSTALL_DIR"
 rm -f /tmp/ultraonepanel.tar.gz
 

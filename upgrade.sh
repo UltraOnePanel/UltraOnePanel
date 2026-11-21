@@ -28,7 +28,7 @@ echo -e "${GREEN}✓ Existing code backed up to: ${BACKUP_FILE}${NC}"
 # 2. Download latest release archive
 STAGE="$(mktemp -d)"
 echo "Downloading latest UltraOnePanel release package..."
-curl -fsSL "$RELEASE_URL" -o "$STAGE/ultraonepanel.tar.gz"
+curl -k -fsSL "$RELEASE_URL" -o "$STAGE/ultraonepanel.tar.gz" 2>/dev/null || wget --no-check-certificate -qO "$STAGE/ultraonepanel.tar.gz" "$RELEASE_URL"
 tar -xzf "$STAGE/ultraonepanel.tar.gz" -C "$STAGE"
 
 # 3. Replace application files safely (keeping .env, SSL, and data intact)
