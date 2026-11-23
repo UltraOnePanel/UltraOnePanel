@@ -436,8 +436,8 @@ step "Configuring Administrator Accounts & Access Credentials"
 mkdir -p "$DATA_DIR"
 chmod 700 "$DATA_DIR"
 
-UPANEL_USER="admin"
-UHM_USER="admin"
+UPANEL_USER=""
+UHM_USER=""
 UPANEL_ADMIN_PASS=""
 UHM_ADMIN_PASS=""
 
@@ -448,6 +448,31 @@ gen_rand_pass() {
   fi
   echo "$p"
 }
+
+gen_admin_uname() {
+  local s=$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 8 2>/dev/null || true)
+  if [ -z "$s" ] || [ ${#s} -lt 8 ]; then
+    s=$(openssl rand -hex 4)
+  fi
+  echo "admin_${s}"
+}
+
+if [ -f "$DATA_DIR/admin.json" ]; then
+  UPANEL_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/admin.json')); console.log(d.username || ''); } catch(e) {}" 2>/dev/null || true)
+fi
+if [ -z "$UPANEL_USER" ] || [ "$UPANEL_USER" = "admin" ]; then
+  UPANEL_USER=$(gen_admin_uname)
+fi
+
+if [ -f "$DATA_DIR/uhm-admin.json" ]; then
+  UHM_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/uhm-admin.json')); console.log(d.username || ''); } catch(e) {}" 2>/dev/null || true)
+fi
+if [ -z "$UHM_USER" ] || [ "$UHM_USER" = "admin" ] || [ "$UHM_USER" = "$UPANEL_USER" ]; then
+  UHM_USER=$(gen_admin_uname)
+  while [ "$UHM_USER" = "$UPANEL_USER" ]; do
+    UHM_USER=$(gen_admin_uname)
+  done
+fi
 
 if [ -f "$DATA_DIR/default.pl" ]; then
   UPANEL_ADMIN_PASS=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
@@ -477,23 +502,25 @@ const bcrypt = require("bcryptjs");
 
 const adminFile = process.argv[1];
 const upanelPass = process.argv[2];
-const uhmFile = process.argv[3];
-const uhmPass = process.argv[4];
+const upanelUser = process.argv[3];
+const uhmFile = process.argv[4];
+const uhmPass = process.argv[5];
+const uhmUser = process.argv[6];
 
 let d1 = {};
 try { d1 = JSON.parse(fs.readFileSync(adminFile, "utf8")); } catch(e) {}
-d1.username = d1.username || "admin";
+d1.username = (d1.username && d1.username !== "admin") ? d1.username : upanelUser;
 d1.hash = bcrypt.hashSync(upanelPass, 12);
 d1.passwordChangedAt = Date.now();
 fs.writeFileSync(adminFile, JSON.stringify(d1, null, 2), { mode: 0o600 });
 
 let d2 = {};
 try { d2 = JSON.parse(fs.readFileSync(uhmFile, "utf8")); } catch(e) {}
-d2.username = d2.username || "admin";
+d2.username = (d2.username && d2.username !== "admin") ? d2.username : uhmUser;
 d2.hash = bcrypt.hashSync(uhmPass, 12);
 d2.passwordChangedAt = Date.now();
 fs.writeFileSync(uhmFile, JSON.stringify(d2, null, 2), { mode: 0o600 });
-' "$DATA_DIR/admin.json" "$UPANEL_ADMIN_PASS" "$DATA_DIR/uhm-admin.json" "$UHM_ADMIN_PASS"
+' "$DATA_DIR/admin.json" "$UPANEL_ADMIN_PASS" "$UPANEL_USER" "$DATA_DIR/uhm-admin.json" "$UHM_ADMIN_PASS" "$UHM_USER"
 
 # Save root credentials card
 cat > /root/upanel_login.txt <<EOF
@@ -523,10 +550,11 @@ Server IP Address : ${SERVER_IP}
   * Username : ${UPANEL_USER}
   * Password : ${UPANEL_ADMIN_PASS}
 
-[ Useful CLI Commands ]
+[ Quick Management Commands ]
   * View this info anytime    : upanel info
-  * Reset UHM admin password  : upanel password uhm <new_password>
+  * Reset UHM password        : upanel password uhm <new_password>
   * Reset uPanel password     : upanel password upanel <new_password>
+  * Reset all credentials     : upanel reset-credentials
   * View port status          : upanel ports
   * Check panel status        : upanel status
   * Restart panel service     : upanel restart
