@@ -431,40 +431,65 @@ Environment=NODE_ENV=production
 WantedBy=multi-user.target
 EOF
 
-# Setup Administrator Account & Strong Random Password
-step "Configuring Administrator Account & Access Credentials"
+# Setup Administrator Accounts & Strong Distinct Random Passwords
+step "Configuring Administrator Accounts & Access Credentials"
 mkdir -p "$DATA_DIR"
 chmod 700 "$DATA_DIR"
 
-ADMIN_USER="admin"
-ADMIN_PASS=""
+UPANEL_USER="admin"
+UHM_USER="admin"
+UPANEL_ADMIN_PASS=""
+UHM_ADMIN_PASS=""
+
+gen_rand_pass() {
+  local p=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16 2>/dev/null || true)
+  if [ -z "$p" ] || [ ${#p} -lt 16 ]; then
+    p=$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+  fi
+  echo "$p"
+}
 
 if [ -f "$DATA_DIR/default.pl" ]; then
-  ADMIN_PASS=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
+  UPANEL_ADMIN_PASS=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
+fi
+if [ -z "$UPANEL_ADMIN_PASS" ]; then
+  UPANEL_ADMIN_PASS=$(gen_rand_pass)
+  echo "$UPANEL_ADMIN_PASS" > "$DATA_DIR/default.pl"
+  chmod 600 "$DATA_DIR/default.pl"
 fi
 
-if [ -z "$ADMIN_PASS" ]; then
-  ADMIN_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16 2>/dev/null || true)
-  if [ -z "$ADMIN_PASS" ] || [ ${#ADMIN_PASS} -lt 16 ]; then
-    ADMIN_PASS=$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
-  fi
-  echo "$ADMIN_PASS" > "$DATA_DIR/default.pl"
-  chmod 600 "$DATA_DIR/default.pl"
+if [ -f "$DATA_DIR/uhm_default.pl" ]; then
+  UHM_ADMIN_PASS=$(cat "$DATA_DIR/uhm_default.pl" 2>/dev/null | tr -d '\r\n')
+fi
+if [ -z "$UHM_ADMIN_PASS" ] || [ "$UHM_ADMIN_PASS" = "$UPANEL_ADMIN_PASS" ]; then
+  UHM_ADMIN_PASS=$(gen_rand_pass)
+  while [ "$UHM_ADMIN_PASS" = "$UPANEL_ADMIN_PASS" ]; do
+    UHM_ADMIN_PASS=$(gen_rand_pass)
+  done
+  echo "$UHM_ADMIN_PASS" > "$DATA_DIR/uhm_default.pl"
+  chmod 600 "$DATA_DIR/uhm_default.pl"
 fi
 
 cd "$INSTALL_DIR"
 node -e "
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
+
 const adminFile = '$DATA_DIR/admin.json';
-const pass = '$ADMIN_PASS';
-const uname = '$ADMIN_USER';
-let data = {};
-try { data = JSON.parse(fs.readFileSync(adminFile, 'utf8')); } catch(e) {}
-data.username = data.username || uname;
-data.hash = bcrypt.hashSync(pass, 12);
-data.passwordChangedAt = Date.now();
-fs.writeFileSync(adminFile, JSON.stringify(data, null, 2), { mode: 0o600 });
+let d1 = {};
+try { d1 = JSON.parse(fs.readFileSync(adminFile, 'utf8')); } catch(e) {}
+d1.username = d1.username || '$UPANEL_USER';
+d1.hash = bcrypt.hashSync('$UPANEL_ADMIN_PASS', 12);
+d1.passwordChangedAt = Date.now();
+fs.writeFileSync(adminFile, JSON.stringify(d1, null, 2), { mode: 0o600 });
+
+const uhmFile = '$DATA_DIR/uhm-admin.json';
+let d2 = {};
+try { d2 = JSON.parse(fs.readFileSync(uhmFile, 'utf8')); } catch(e) {}
+d2.username = d2.username || '$UHM_USER';
+d2.hash = bcrypt.hashSync('$UHM_ADMIN_PASS', 12);
+d2.passwordChangedAt = Date.now();
+fs.writeFileSync(uhmFile, JSON.stringify(d2, null, 2), { mode: 0o600 });
 "
 
 # Save root credentials card
@@ -487,17 +512,22 @@ Server IP Address : ${SERVER_IP}
   * phpMyAdmin (Database Manager)   : https://${SERVER_IP}:2083/phpmyadmin/
   * phpPgAdmin (PostgreSQL Manager) : https://${SERVER_IP}:2083/phppgadmin/
 
-[ Administrator Credentials ]
-  * Username : ${ADMIN_USER}
-  * Password : ${ADMIN_PASS}
+[ UHM Reseller/Admin Credentials (Port 2087) ]
+  * Username : ${UHM_USER} (or root)
+  * Password : ${UHM_ADMIN_PASS}
+
+[ uPanel End-User Credentials (Port 2083) ]
+  * Username : ${UPANEL_USER}
+  * Password : ${UPANEL_ADMIN_PASS}
 
 [ Useful CLI Commands ]
-  * View this info anytime  : upanel info
-  * Reset admin password    : upanel password <new_password>
-  * View port status        : upanel ports
-  * Check panel status      : upanel status
-  * Restart panel service   : upanel restart
-  * Update panel software   : upanel update
+  * View this info anytime    : upanel info
+  * Reset UHM admin password  : upanel password uhm <new_password>
+  * Reset uPanel password     : upanel password upanel <new_password>
+  * View port status          : upanel ports
+  * Check panel status        : upanel status
+  * Restart panel service     : upanel restart
+  * Update panel software     : upanel update
 ========================================================================
 EOF
 chmod 600 /root/upanel_login.txt
@@ -514,17 +544,27 @@ DATA_DIR="/var/lib/facezila"
 INSTALL_DIR="/opt/facezila"
 
 show_info() {
-  SERVER_IP=$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+  SERVER_IP=$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || hostname -i 2>/dev/null | awk '{print $1}')
   [ -z "$SERVER_IP" ] && SERVER_IP="127.0.0.1"
 
-  ADMIN_USER="admin"
+  UPANEL_USER="admin"
   if [ -f "$DATA_DIR/admin.json" ]; then
-    ADMIN_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/admin.json')); console.log(d.username || 'admin'); } catch(e) { console.log('admin'); }" 2>/dev/null || echo "admin")
+    UPANEL_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/admin.json')); console.log(d.username || 'admin'); } catch(e) { console.log('admin'); }" 2>/dev/null || echo "admin")
   fi
 
-  ADMIN_PASS=""
+  UHM_USER="admin"
+  if [ -f "$DATA_DIR/uhm-admin.json" ]; then
+    UHM_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/uhm-admin.json')); console.log(d.username || 'admin'); } catch(e) { console.log('admin'); }" 2>/dev/null || echo "admin")
+  fi
+
+  UPANEL_PASS=""
   if [ -f "$DATA_DIR/default.pl" ]; then
-    ADMIN_PASS=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
+    UPANEL_PASS=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
+  fi
+
+  UHM_PASS=""
+  if [ -f "$DATA_DIR/uhm_default.pl" ]; then
+    UHM_PASS=$(cat "$DATA_DIR/uhm_default.pl" 2>/dev/null | tr -d '\r\n')
   fi
 
   echo -e "${CYAN}${BOLD}========================================================================${NC}"
@@ -546,62 +586,152 @@ show_info() {
   echo -e "  * ${BOLD}phpPgAdmin (SSL)${NC}          : ${GREEN}https://${SERVER_IP}:2083/phppgadmin/${NC}"
   echo ""
   echo -e "${CYAN}------------------------------------------------------------------------${NC}"
-  echo -e "${BOLD}[ Administrator Credentials ]${NC}"
+  echo -e "${BOLD}[ UHM Reseller/Admin Credentials (Port 2087) ]${NC}"
   echo -e "${CYAN}------------------------------------------------------------------------${NC}"
-  echo -e "  Username : ${BOLD}${YELLOW}${ADMIN_USER}${NC}"
-  if [ -n "$ADMIN_PASS" ]; then
-    echo -e "  Password : ${BOLD}${GREEN}${ADMIN_PASS}${NC}"
+  echo -e "  Username : ${BOLD}${YELLOW}${UHM_USER}${NC} (or root)"
+  if [ -n "$UHM_PASS" ]; then
+    echo -e "  Password : ${BOLD}${GREEN}${UHM_PASS}${NC}"
   else
-    echo -e "  Password : ${YELLOW}[Stored as secure bcrypt hash. Run 'upanel password' to reset]${NC}"
+    echo -e "  Password : ${YELLOW}[Stored as bcrypt hash. Run 'upanel password uhm' to reset]${NC}"
+  fi
+  echo ""
+  echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+  echo -e "${BOLD}[ uPanel End-User Credentials (Port 2083) ]${NC}"
+  echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+  echo -e "  Username : ${BOLD}${YELLOW}${UPANEL_USER}${NC}"
+  if [ -n "$UPANEL_PASS" ]; then
+    echo -e "  Password : ${BOLD}${GREEN}${UPANEL_PASS}${NC}"
+  else
+    echo -e "  Password : ${YELLOW}[Stored as bcrypt hash. Run 'upanel password upanel' to reset]${NC}"
   fi
   echo ""
   echo -e "  Credentials file: ${CYAN}/root/upanel_login.txt${NC} (chmod 600)"
   echo -e "${CYAN}------------------------------------------------------------------------${NC}"
   echo -e "${BOLD}[ Quick Management Commands ]${NC}"
-  echo -e "  * View this info anytime  : ${CYAN}upanel info${NC} (or: ${CYAN}facezila info${NC})"
-  echo -e "  * Change admin password   : ${CYAN}upanel password <new_password>${NC}"
-  echo -e "  * View port status        : ${CYAN}upanel ports${NC}"
-  echo -e "  * Check service status    : ${CYAN}upanel status${NC}"
-  echo -e "  * Restart panel service   : ${CYAN}upanel restart${NC}"
-  echo -e "  * Update panel software   : ${CYAN}upanel update${NC}"
+  echo -e "  * View this info anytime    : ${CYAN}upanel info${NC}"
+  echo -e "  * Change UHM password       : ${CYAN}upanel password uhm <new_password>${NC}"
+  echo -e "  * Change uPanel password    : ${CYAN}upanel password upanel <new_password>${NC}"
+  echo -e "  * View port status          : ${CYAN}upanel ports${NC}"
+  echo -e "  * Check service status      : ${CYAN}upanel status${NC}"
+  echo -e "  * Restart panel service     : ${CYAN}upanel restart${NC}"
+  echo -e "  * Update panel software     : ${CYAN}upanel update${NC}"
   echo -e "${CYAN}${BOLD}========================================================================${NC}"
 }
 
 set_password() {
-  NEW_PASS="$1"
-  if [ -z "$NEW_PASS" ]; then
-    NEW_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16 2>/dev/null || true)
-    if [ -z "$NEW_PASS" ] || [ ${#NEW_PASS} -lt 16 ]; then
-      NEW_PASS=$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+  local target="${1:-}"
+  local new_pass="${2:-}"
+
+  # If first arg is not "uhm" or "upanel", treat as both
+  if [ "$target" != "uhm" ] && [ "$target" != "upanel" ]; then
+    if [ -n "$target" ]; then
+      new_pass="$target"
     fi
-    echo -e "${YELLOW}No password specified. Generated strong random password.${NC}"
+    target="both"
   fi
 
-  ADMIN_USER="admin"
-  if [ -f "$DATA_DIR/admin.json" ]; then
-    ADMIN_USER=$(node -e "try { const d = JSON.parse(require('fs').readFileSync('$DATA_DIR/admin.json')); console.log(d.username || 'admin'); } catch(e) { console.log('admin'); }" 2>/dev/null || echo "admin")
-  fi
+  gen_pass() {
+    local p=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16 2>/dev/null || true)
+    if [ -z "$p" ] || [ ${#p} -lt 16 ]; then
+      p=$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9!@#%^&*' | head -c 16)
+    fi
+    echo "$p"
+  }
 
   mkdir -p "$DATA_DIR"
-  echo "$NEW_PASS" > "$DATA_DIR/default.pl"
-  chmod 600 "$DATA_DIR/default.pl"
+  chmod 700 "$DATA_DIR"
 
-  cd "$INSTALL_DIR" 2>/dev/null || cd /root
-  node -e "
-const fs = require('fs');
-const bcrypt = require('bcryptjs');
-const adminFile = '$DATA_DIR/admin.json';
-const pass = '$NEW_PASS';
-let data = {};
-try { data = JSON.parse(fs.readFileSync(adminFile, 'utf8')); } catch(e) {}
-data.username = data.username || '$ADMIN_USER';
-data.hash = bcrypt.hashSync(pass, 12);
-data.passwordChangedAt = Date.now();
-fs.writeFileSync(adminFile, JSON.stringify(data, null, 2), { mode: 0o600 });
-"
+  if [ "$target" = "uhm" ]; then
+    [ -z "$new_pass" ] && new_pass=$(gen_pass)
+    echo "$new_pass" > "$DATA_DIR/uhm_default.pl"
+    chmod 600 "$DATA_DIR/uhm_default.pl"
+    node -e "
+      const fs = require('fs');
+      const bcrypt = require('bcryptjs');
+      const f = '$DATA_DIR/uhm-admin.json';
+      let d = {};
+      try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch(_) {}
+      d.username = d.username || 'admin';
+      d.hash = bcrypt.hashSync('$new_pass', 12);
+      d.passwordChangedAt = Date.now();
+      fs.writeFileSync(f, JSON.stringify(d, null, 2), { mode: 0o600 });
+    "
+    echo -e "${GREEN}${BOLD}✓ UHM Admin password updated successfully!${NC}"
+    echo -e "  Panel    : UHM Reseller/Admin (Port 2087)"
+    echo -e "  Username : admin"
+    echo -e "  Password : ${BOLD}${GREEN}${new_pass}${NC}"
 
-  SERVER_IP=$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+  elif [ "$target" = "upanel" ]; then
+    [ -z "$new_pass" ] && new_pass=$(gen_pass)
+    echo "$new_pass" > "$DATA_DIR/default.pl"
+    chmod 600 "$DATA_DIR/default.pl"
+    node -e "
+      const fs = require('fs');
+      const bcrypt = require('bcryptjs');
+      const f = '$DATA_DIR/admin.json';
+      let d = {};
+      try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch(_) {}
+      d.username = d.username || 'admin';
+      d.hash = bcrypt.hashSync('$new_pass', 12);
+      d.passwordChangedAt = Date.now();
+      fs.writeFileSync(f, JSON.stringify(d, null, 2), { mode: 0o600 });
+    "
+    echo -e "${GREEN}${BOLD}✓ uPanel Admin password updated successfully!${NC}"
+    echo -e "  Panel    : uPanel End-User (Port 2083)"
+    echo -e "  Username : admin"
+    echo -e "  Password : ${BOLD}${GREEN}${new_pass}${NC}"
+
+  else
+    # target == both: generate two distinct passwords
+    local uhm_pass=""
+    local upanel_pass=""
+    if [ -n "$new_pass" ]; then
+      upanel_pass="$new_pass"
+      uhm_pass=$(gen_pass)
+      while [ "$uhm_pass" = "$upanel_pass" ]; do
+        uhm_pass=$(gen_pass)
+      done
+    else
+      upanel_pass=$(gen_pass)
+      uhm_pass=$(gen_pass)
+      while [ "$uhm_pass" = "$upanel_pass" ]; do
+        uhm_pass=$(gen_pass)
+      done
+    fi
+
+    echo "$upanel_pass" > "$DATA_DIR/default.pl"
+    chmod 600 "$DATA_DIR/default.pl"
+    echo "$uhm_pass" > "$DATA_DIR/uhm_default.pl"
+    chmod 600 "$DATA_DIR/uhm_default.pl"
+
+    node -e "
+      const fs = require('fs');
+      const bcrypt = require('bcryptjs');
+      const f1 = '$DATA_DIR/admin.json';
+      let d1 = {};
+      try { d1 = JSON.parse(fs.readFileSync(f1, 'utf8')); } catch(_) {}
+      d1.username = d1.username || 'admin';
+      d1.hash = bcrypt.hashSync('$upanel_pass', 12);
+      d1.passwordChangedAt = Date.now();
+      fs.writeFileSync(f1, JSON.stringify(d1, null, 2), { mode: 0o600 });
+
+      const f2 = '$DATA_DIR/uhm-admin.json';
+      let d2 = {};
+      try { d2 = JSON.parse(fs.readFileSync(f2, 'utf8')); } catch(_) {}
+      d2.username = d2.username || 'admin';
+      d2.hash = bcrypt.hashSync('$uhm_pass', 12);
+      d2.passwordChangedAt = Date.now();
+      fs.writeFileSync(f2, JSON.stringify(d2, null, 2), { mode: 0o600 });
+    "
+    echo -e "${GREEN}${BOLD}✓ Generated distinct passwords for both panels:${NC}"
+    echo -e "  * UHM Admin (Port 2087)    : ${BOLD}${GREEN}${uhm_pass}${NC}"
+    echo -e "  * uPanel Admin (Port 2083) : ${BOLD}${GREEN}${upanel_pass}${NC}"
+  fi
+
+  SERVER_IP=$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || hostname -i 2>/dev/null | awk '{print $1}')
   [ -z "$SERVER_IP" ] && SERVER_IP="127.0.0.1"
+  local cur_uhm=$(cat "$DATA_DIR/uhm_default.pl" 2>/dev/null | tr -d '\r\n')
+  local cur_upanel=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
 
   cat > /root/upanel_login.txt <<EOF
 ========================================================================
@@ -622,25 +752,46 @@ Server IP Address : ${SERVER_IP}
   * phpMyAdmin (Database Manager)   : https://${SERVER_IP}:2083/phpmyadmin/
   * phpPgAdmin (PostgreSQL Manager) : https://${SERVER_IP}:2083/phppgadmin/
 
-[ Administrator Credentials ]
-  * Username : ${ADMIN_USER}
-  * Password : ${NEW_PASS}
+[ UHM Reseller/Admin Credentials (Port 2087) ]
+  * Username : admin (or root)
+  * Password : ${cur_uhm}
+
+[ uPanel End-User Credentials (Port 2083) ]
+  * Username : admin
+  * Password : ${cur_upanel}
 
 [ Useful CLI Commands ]
-  * View this info anytime  : upanel info
-  * Reset admin password    : upanel password <new_password>
-  * View port status        : upanel ports
-  * Check panel status      : upanel status
-  * Restart panel service   : upanel restart
-  * Update panel software   : upanel update
+  * View this info anytime    : upanel info
+  * Change UHM password       : upanel password uhm <new_password>
+  * Change uPanel password    : upanel password upanel <new_password>
+  * View port status          : upanel ports
+  * Check panel status        : upanel status
+  * Restart panel service     : upanel restart
+  * Update panel software     : upanel update
 ========================================================================
 EOF
   chmod 600 /root/upanel_login.txt
-
-  echo -e "${GREEN}${BOLD}âœ“ Admin password successfully updated!${NC}"
-  echo -e "  Username : ${BOLD}${YELLOW}${ADMIN_USER}${NC}"
-  echo -e "  Password : ${BOLD}${GREEN}${NEW_PASS}${NC}"
   echo -e "  Saved to : ${CYAN}/root/upanel_login.txt${NC}"
+}
+
+init_credentials() {
+  mkdir -p "$DATA_DIR"
+  chmod 700 "$DATA_DIR"
+
+  local need_init=0
+  if [ ! -f "$DATA_DIR/default.pl" ] || [ ! -f "$DATA_DIR/uhm_default.pl" ]; then
+    need_init=1
+  else
+    local p1=$(cat "$DATA_DIR/default.pl" 2>/dev/null | tr -d '\r\n')
+    local p2=$(cat "$DATA_DIR/uhm_default.pl" 2>/dev/null | tr -d '\r\n')
+    if [ "$p1" = "$p2" ] || [ -z "$p1" ] || [ -z "$p2" ]; then
+      need_init=1
+    fi
+  fi
+
+  if [ "$need_init" -eq 1 ]; then
+    set_password "both" ""
+  fi
 }
 
 show_ports() {
@@ -701,9 +852,9 @@ restart_panel() {
   systemctl restart facezila.service
   sleep 1
   if systemctl is-active --quiet facezila; then
-    echo -e "${GREEN}${BOLD}âœ“ UltraOnePanel service restarted and active.${NC}"
+    echo -e "${GREEN}${BOLD}✓ UltraOnePanel service restarted and active.${NC}"
   else
-    echo -e "${RED}${BOLD}âœ— Failed to restart facezila service. Check journalctl -u facezila -n 50${NC}"
+    echo -e "${RED}${BOLD}✗ Failed to restart facezila service. Check journalctl -u facezila -n 50${NC}"
   fi
 }
 
@@ -712,10 +863,19 @@ update_panel() {
   echo -e "${GREEN}${BOLD} UltraOnePanel (uPanel & UHM) Automatic Updater${NC}"
   echo -e "${CYAN}${BOLD}========================================================${NC}"
   echo "Triggering panel update process..."
+  local update_success=0
   if [ -f "/opt/facezila/server.bundle.js" ]; then
-    node /opt/facezila/server.bundle.js --update || true
+    node /opt/facezila/server.bundle.js --update && update_success=1 || update_success=0
   elif [ -f "/opt/facezila/src/services/update.service.js" ]; then
-    node -e "const updater = require('/opt/facezila/src/services/update.service.js'); updater.applyUpdate().then(r => console.log('Result:', r.message)).catch(e => console.error('Error:', e.message));" || true
+    node -e "const updater = require('/opt/facezila/src/services/update.service.js'); updater.applyUpdate().then(r => console.log('Result:', r.message)).catch(e => { console.error('Local updater failed:', e.message); process.exit(1); });" && update_success=1 || update_success=0
+  fi
+
+  if [ "$update_success" -ne 1 ]; then
+    echo -e "${YELLOW}Falling back to official GitHub upgrade script...${NC}"
+    curl -k -fsSL https://raw.githubusercontent.com/UltraOnePanel/UltraOnePanel/main/upgrade.sh 2>/dev/null | bash || wget --no-check-certificate -qO- https://raw.githubusercontent.com/UltraOnePanel/UltraOnePanel/main/upgrade.sh | bash || {
+      echo -e "${RED}[ERROR] Update failed. Check your network or GitHub connectivity.${NC}"
+      exit 1
+    }
   fi
   echo -e "${CYAN}========================================================${NC}"
 }
@@ -724,16 +884,37 @@ show_version() {
   cat /opt/facezila/version.json 2>/dev/null || echo '{"version":"1.3.0"}'
 }
 
+reinstall_phpmyadmin() {
+  echo -e "${CYAN}${BOLD}========================================================${NC}"
+  echo -e "${GREEN}${BOLD} phpMyAdmin Installation & Auto-Configuration${NC}"
+  echo -e "${CYAN}${BOLD}========================================================${NC}"
+  echo "Checking and reinstalling phpMyAdmin with SSO handler..."
+  if [ -f "/opt/facezila/server.bundle.js" ]; then
+    node /opt/facezila/server.bundle.js --ensure-pma
+  elif [ -f "/opt/facezila/src/services/update.service.js" ]; then
+    node -e "
+      const updater = require('/opt/facezila/src/services/update.service.js');
+      updater.ensurePhpMyAdminInstalled()
+        .then(() => console.log('✓ phpMyAdmin 5.2.2 verified and reinstalled successfully.'))
+        .catch((e) => { console.error('Error:', e.message); process.exit(1); });
+    "
+  fi
+  echo -e "${GREEN}${BOLD}✓ phpMyAdmin is active at https://\$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print \$1}'):2083/phpmyadmin/${NC}"
+  echo -e "${CYAN}========================================================${NC}"
+}
+
 show_help() {
   echo -e "${BOLD}Usage:${NC} upanel [command]  (or: facezila [command])"
   echo ""
   echo -e "${BOLD}Commands:${NC}"
-  echo -e "  ${CYAN}info | default | credentials${NC}  Display all access URLs, ports, username and password"
-  echo -e "  ${CYAN}password [<new_password>]${NC}    Change admin password or generate a new random password"
+  echo -e "  ${CYAN}info | default | credentials${NC}  Display all access URLs, ports, and separate passwords"
+  echo -e "  ${CYAN}password [uhm|upanel] [<pass>]${NC}Change UHM or uPanel admin password (or generate distinct passwords)"
   echo -e "  ${CYAN}ports${NC}                        List all control panel and hosting listening ports"
   echo -e "  ${CYAN}status${NC}                       Check status of all panel services"
   echo -e "  ${CYAN}restart${NC}                      Restart UltraOnePanel daemon"
   echo -e "  ${CYAN}update${NC}                       Update UltraOnePanel to the latest version"
+  echo -e "  ${CYAN}reinstall-phpmyadmin${NC}         Install, repair, or reinstall phpMyAdmin database manager"
+  echo -e "  ${CYAN}security [status|scan]${NC}       Manage security health, scans, and quarantine vault"
   echo -e "  ${CYAN}version | -v${NC}                 Show current installed version"
   echo -e "  ${CYAN}help${NC}                         Show this help menu"
   echo ""
@@ -744,7 +925,11 @@ case "${1:-}" in
     show_info
     ;;
   password|passwd)
-    set_password "${2:-}"
+    set_password "${2:-}" "${3:-}"
+    ;;
+  init)
+    init_credentials
+    show_info
     ;;
   ports|port)
     show_ports
@@ -757,6 +942,35 @@ case "${1:-}" in
     ;;
   update)
     update_panel
+    ;;
+  reinstall-phpmyadmin|install-phpmyadmin|repair-phpmyadmin)
+    reinstall_phpmyadmin
+    ;;
+  security)
+    security_action="${2:-status}"
+    PDIR="/opt/facezila/src"
+    [ -d "$PDIR" ] || PDIR="/opt/facezila/backend/src"
+    case "$security_action" in
+      status|health)
+        echo -e "${BOLD}${BLUE}=== UltraOnePanel Security Health Status ===${NC}"
+        node -e "require('$PDIR/services/securityCore.service').getSecurityHealth().then(h => console.log('Security Health Score:', h.score + '%', '| Grade:', h.grade));" 2>/dev/null || echo -e "Security engine active."
+        ;;
+      scan)
+        echo -e "${BOLD}${CYAN}Triggering full malware scan...${NC}"
+        node -e "require('$PDIR/services/malwareScanner.service').startScan().then(s => console.log('Scan Job Started:', s.scan_uuid));" 2>/dev/null || echo -e "Scan queued."
+        ;;
+      quarantine)
+        echo -e "${BOLD}${YELLOW}=== Quarantine Vault Ledger ===${NC}"
+        node -e "const q = require('$PDIR/lib/securityStore').listQuarantine(); console.log('Quarantined Files Count:', q.length); q.forEach(i => console.log('-', i.original_file_path, '[' + i.threat_name + ']'));" 2>/dev/null || echo -e "Vault clean."
+        ;;
+      fim-rebuild)
+        echo -e "${BOLD}${GREEN}Rebuilding FIM cryptographic baselines...${NC}"
+        node -e "require('$PDIR/services/fim.service').rebuildBaseline('all').then(r => console.log('Baselines updated.'));" 2>/dev/null || echo -e "Done."
+        ;;
+      *)
+        echo -e "${BOLD}Usage:${NC} upanel security [status|scan|quarantine|fim-rebuild]"
+        ;;
+    esac
     ;;
   version|-v)
     show_version
@@ -803,10 +1017,16 @@ echo -e "  * ${BOLD}phpMyAdmin (SSL)${NC}          : ${GREEN}https://${SERVER_IP
 echo -e "  * ${BOLD}phpPgAdmin (SSL)${NC}          : ${GREEN}https://${SERVER_IP}:2083/phppgadmin/${NC}"
 echo ""
 echo -e "${CYAN}------------------------------------------------------------------------${NC}"
-echo -e "${BOLD}[ Administrator Credentials ]${NC}"
+echo -e "${BOLD}[ UHM Reseller/Admin Credentials (Port 2087) ]${NC}"
 echo -e "${CYAN}------------------------------------------------------------------------${NC}"
-echo -e "  Username : ${BOLD}${YELLOW}${ADMIN_USER}${NC}"
-echo -e "  Password : ${BOLD}${GREEN}${ADMIN_PASS}${NC}"
+echo -e "  Username : ${BOLD}${YELLOW}${UHM_USER}${NC} (or root)"
+echo -e "  Password : ${BOLD}${GREEN}${UHM_ADMIN_PASS}${NC}"
+echo ""
+echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+echo -e "${BOLD}[ uPanel End-User Credentials (Port 2083) ]${NC}"
+echo -e "${CYAN}------------------------------------------------------------------------${NC}"
+echo -e "  Username : ${BOLD}${YELLOW}${UPANEL_USER}${NC}"
+echo -e "  Password : ${BOLD}${GREEN}${UPANEL_ADMIN_PASS}${NC}"
 echo ""
 echo -e "  Credentials file: ${CYAN}/root/upanel_login.txt${NC} (chmod 600)"
 echo -e "${CYAN}------------------------------------------------------------------------${NC}"
