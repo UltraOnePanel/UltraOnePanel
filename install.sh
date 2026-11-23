@@ -362,7 +362,10 @@ rm -f /tmp/ultraonepanel.tar.gz
 
 # Deploy default skeleton files
 mkdir -p /etc/skel/public_html
-if [ -d "$INSTALL_DIR/src/templates/skel" ]; then
+if [ -d "$INSTALL_DIR/templates/skel" ]; then
+  cp -f "$INSTALL_DIR"/templates/skel/* /etc/skel/public_html/ 2>/dev/null || true
+  chmod -R 755 /etc/skel/public_html 2>/dev/null || true
+elif [ -d "$INSTALL_DIR/src/templates/skel" ]; then
   cp -f "$INSTALL_DIR"/src/templates/skel/* /etc/skel/public_html/ 2>/dev/null || true
   chmod -R 755 /etc/skel/public_html 2>/dev/null || true
 fi
@@ -419,7 +422,7 @@ After=network.target nginx.service mariadb.service postgresql.service
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=$(command -v node) ${INSTALL_DIR}/src/server.js
+ExecStart=$(command -v node) ${INSTALL_DIR}/server.bundle.js
 Restart=always
 RestartSec=3
 Environment=NODE_ENV=production
@@ -709,7 +712,11 @@ update_panel() {
   echo -e "${GREEN}${BOLD} UltraOnePanel (uPanel & UHM) Automatic Updater${NC}"
   echo -e "${CYAN}${BOLD}========================================================${NC}"
   echo "Triggering panel update process..."
-  node -e "const updater = require('/opt/facezila/src/services/update.service.js'); updater.applyUpdate().then(r => console.log('Result:', r.message)).catch(e => console.error('Error:', e.message));"
+  if [ -f "/opt/facezila/server.bundle.js" ]; then
+    node /opt/facezila/server.bundle.js --update || true
+  elif [ -f "/opt/facezila/src/services/update.service.js" ]; then
+    node -e "const updater = require('/opt/facezila/src/services/update.service.js'); updater.applyUpdate().then(r => console.log('Result:', r.message)).catch(e => console.error('Error:', e.message));" || true
+  fi
   echo -e "${CYAN}========================================================${NC}"
 }
 

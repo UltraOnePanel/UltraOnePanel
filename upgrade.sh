@@ -22,7 +22,7 @@ echo -e "${CYAN}${BOLD}=========================================================
 BACKUP_DIR="/var/backups/facezila"
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/panel-code-$(date +%Y%m%d-%H%M%S).tar.gz"
-tar -czf "$BACKUP_FILE" -C "$INSTALL_DIR" src dist package.json 2>/dev/null || true
+tar -czf "$BACKUP_FILE" -C "$INSTALL_DIR" server.bundle.js dist package.json 2>/dev/null || tar -czf "$BACKUP_FILE" -C "$INSTALL_DIR" src dist package.json 2>/dev/null || true
 echo -e "${GREEN}✓ Existing code backed up to: ${BACKUP_FILE}${NC}"
 
 # 2. Download latest release archive
@@ -34,11 +34,16 @@ tar -xzf "$STAGE/ultraonepanel.tar.gz" -C "$STAGE"
 # 3. Replace application files safely (keeping .env, SSL, and data intact)
 echo "Deploying latest backend runtime and frontend interfaces..."
 rm -rf "$INSTALL_DIR/src" "$INSTALL_DIR/dist" "$INSTALL_DIR/whm-dist" "$INSTALL_DIR/frontend" "$INSTALL_DIR/whm-frontend"
-cp -r "$STAGE/src" "$INSTALL_DIR/"
+[ -f "$STAGE/server.bundle.js" ] && cp -f "$STAGE/server.bundle.js" "$INSTALL_DIR/"
+[ -f "$STAGE/server.js" ] && cp -f "$STAGE/server.js" "$INSTALL_DIR/"
+[ -d "$STAGE/src" ] && cp -r "$STAGE/src" "$INSTALL_DIR/" || true
+[ -d "$STAGE/templates" ] && cp -r "$STAGE/templates" "$INSTALL_DIR/" || true
+[ -d "$STAGE/migrations" ] && cp -r "$STAGE/migrations" "$INSTALL_DIR/" || true
 cp -r "$STAGE/package.json" "$INSTALL_DIR/"
 [ -f "$STAGE/package-lock.json" ] && cp "$STAGE/package-lock.json" "$INSTALL_DIR/"
 [ -d "$STAGE/dist" ] && cp -r "$STAGE/dist" "$INSTALL_DIR/dist" && cp -r "$STAGE/dist" "$INSTALL_DIR/frontend/dist" 2>/dev/null || true
 [ -d "$STAGE/whm-dist" ] && cp -r "$STAGE/whm-dist" "$INSTALL_DIR/whm-dist" && cp -r "$STAGE/whm-dist" "$INSTALL_DIR/whm-frontend/dist" 2>/dev/null || true
+sed -i 's|/src/server.js|/server.bundle.js|g' /etc/systemd/system/facezila.service 2>/dev/null || true
 
 # 4. Install or update upanel CLI command utility
 if [ -f "$STAGE/installer/upanel" ]; then
