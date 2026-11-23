@@ -388,17 +388,17 @@ WHM_PORT=2087
 SERVER_IP=${SERVER_IP}
 SSL_CERT=/etc/facezila/ssl/panel.crt
 SSL_KEY=/etc/facezila/ssl/panel.key
-LICENSE_SERVER_URL=https://185.70.184.125:2087
+LICENSE_SERVER_URL=https://license.ultraonepanel.com
 EOF
-  if [ "${SERVER_IP}" = "185.70.184.125" ]; then
+  if [ -f /opt/license-server/server.js ] || [ -f /opt/license-server/licenses.json ]; then
     echo "IS_LICENSE_SERVER=true" >> "$INSTALL_DIR/.env"
   fi
   chmod 600 "$INSTALL_DIR/.env"
 else
   if grep -q "LICENSE_SERVER_URL" "$INSTALL_DIR/.env"; then
-    sed -i "s|LICENSE_SERVER_URL=.*|LICENSE_SERVER_URL=https://185.70.184.125:2087|" "$INSTALL_DIR/.env"
+    sed -i "s|LICENSE_SERVER_URL=.*|LICENSE_SERVER_URL=https://license.ultraonepanel.com|" "$INSTALL_DIR/.env"
   else
-    echo "LICENSE_SERVER_URL=https://185.70.184.125:2087" >> "$INSTALL_DIR/.env"
+    echo "LICENSE_SERVER_URL=https://license.ultraonepanel.com" >> "$INSTALL_DIR/.env"
   fi
 fi
 
