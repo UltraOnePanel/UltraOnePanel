@@ -471,26 +471,29 @@ if [ -z "$UHM_ADMIN_PASS" ] || [ "$UHM_ADMIN_PASS" = "$UPANEL_ADMIN_PASS" ]; the
 fi
 
 cd "$INSTALL_DIR"
-node -e "
-const fs = require('fs');
-const bcrypt = require('bcryptjs');
+node -e '
+const fs = require("fs");
+const bcrypt = require("bcryptjs");
 
-const adminFile = '$DATA_DIR/admin.json';
+const adminFile = process.argv[1];
+const upanelPass = process.argv[2];
+const uhmFile = process.argv[3];
+const uhmPass = process.argv[4];
+
 let d1 = {};
-try { d1 = JSON.parse(fs.readFileSync(adminFile, 'utf8')); } catch(e) {}
-d1.username = d1.username || '$UPANEL_USER';
-d1.hash = bcrypt.hashSync('$UPANEL_ADMIN_PASS', 12);
+try { d1 = JSON.parse(fs.readFileSync(adminFile, "utf8")); } catch(e) {}
+d1.username = d1.username || "admin";
+d1.hash = bcrypt.hashSync(upanelPass, 12);
 d1.passwordChangedAt = Date.now();
 fs.writeFileSync(adminFile, JSON.stringify(d1, null, 2), { mode: 0o600 });
 
-const uhmFile = '$DATA_DIR/uhm-admin.json';
 let d2 = {};
-try { d2 = JSON.parse(fs.readFileSync(uhmFile, 'utf8')); } catch(e) {}
-d2.username = d2.username || '$UHM_USER';
-d2.hash = bcrypt.hashSync('$UHM_ADMIN_PASS', 12);
+try { d2 = JSON.parse(fs.readFileSync(uhmFile, "utf8")); } catch(e) {}
+d2.username = d2.username || "admin";
+d2.hash = bcrypt.hashSync(uhmPass, 12);
 d2.passwordChangedAt = Date.now();
 fs.writeFileSync(uhmFile, JSON.stringify(d2, null, 2), { mode: 0o600 });
-"
+' "$DATA_DIR/admin.json" "$UPANEL_ADMIN_PASS" "$DATA_DIR/uhm-admin.json" "$UHM_ADMIN_PASS"
 
 # Save root credentials card
 cat > /root/upanel_login.txt <<EOF
@@ -645,17 +648,18 @@ set_password() {
     [ -z "$new_pass" ] && new_pass=$(gen_pass)
     echo "$new_pass" > "$DATA_DIR/uhm_default.pl"
     chmod 600 "$DATA_DIR/uhm_default.pl"
-    node -e "
-      const fs = require('fs');
-      const bcrypt = require('bcryptjs');
-      const f = '$DATA_DIR/uhm-admin.json';
+    node -e '
+      const fs = require("fs");
+      const bcrypt = require("bcryptjs");
+      const f = process.argv[1];
+      const pass = process.argv[2];
       let d = {};
-      try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch(_) {}
-      d.username = d.username || 'admin';
-      d.hash = bcrypt.hashSync('$new_pass', 12);
+      try { d = JSON.parse(fs.readFileSync(f, "utf8")); } catch(_) {}
+      d.username = d.username || "admin";
+      d.hash = bcrypt.hashSync(pass, 12);
       d.passwordChangedAt = Date.now();
       fs.writeFileSync(f, JSON.stringify(d, null, 2), { mode: 0o600 });
-    "
+    ' "$DATA_DIR/uhm-admin.json" "$new_pass"
     echo -e "${GREEN}${BOLD}✓ UHM Admin password updated successfully!${NC}"
     echo -e "  Panel    : UHM Reseller/Admin (Port 2087)"
     echo -e "  Username : admin"
@@ -665,17 +669,18 @@ set_password() {
     [ -z "$new_pass" ] && new_pass=$(gen_pass)
     echo "$new_pass" > "$DATA_DIR/default.pl"
     chmod 600 "$DATA_DIR/default.pl"
-    node -e "
-      const fs = require('fs');
-      const bcrypt = require('bcryptjs');
-      const f = '$DATA_DIR/admin.json';
+    node -e '
+      const fs = require("fs");
+      const bcrypt = require("bcryptjs");
+      const f = process.argv[1];
+      const pass = process.argv[2];
       let d = {};
-      try { d = JSON.parse(fs.readFileSync(f, 'utf8')); } catch(_) {}
-      d.username = d.username || 'admin';
-      d.hash = bcrypt.hashSync('$new_pass', 12);
+      try { d = JSON.parse(fs.readFileSync(f, "utf8")); } catch(_) {}
+      d.username = d.username || "admin";
+      d.hash = bcrypt.hashSync(pass, 12);
       d.passwordChangedAt = Date.now();
       fs.writeFileSync(f, JSON.stringify(d, null, 2), { mode: 0o600 });
-    "
+    ' "$DATA_DIR/admin.json" "$new_pass"
     echo -e "${GREEN}${BOLD}✓ uPanel Admin password updated successfully!${NC}"
     echo -e "  Panel    : uPanel End-User (Port 2083)"
     echo -e "  Username : admin"
@@ -704,25 +709,28 @@ set_password() {
     echo "$uhm_pass" > "$DATA_DIR/uhm_default.pl"
     chmod 600 "$DATA_DIR/uhm_default.pl"
 
-    node -e "
-      const fs = require('fs');
-      const bcrypt = require('bcryptjs');
-      const f1 = '$DATA_DIR/admin.json';
+    node -e '
+      const fs = require("fs");
+      const bcrypt = require("bcryptjs");
+      const f1 = process.argv[1];
+      const p1 = process.argv[2];
+      const f2 = process.argv[3];
+      const p2 = process.argv[4];
+
       let d1 = {};
-      try { d1 = JSON.parse(fs.readFileSync(f1, 'utf8')); } catch(_) {}
-      d1.username = d1.username || 'admin';
-      d1.hash = bcrypt.hashSync('$upanel_pass', 12);
+      try { d1 = JSON.parse(fs.readFileSync(f1, "utf8")); } catch(_) {}
+      d1.username = d1.username || "admin";
+      d1.hash = bcrypt.hashSync(p1, 12);
       d1.passwordChangedAt = Date.now();
       fs.writeFileSync(f1, JSON.stringify(d1, null, 2), { mode: 0o600 });
 
-      const f2 = '$DATA_DIR/uhm-admin.json';
       let d2 = {};
-      try { d2 = JSON.parse(fs.readFileSync(f2, 'utf8')); } catch(_) {}
-      d2.username = d2.username || 'admin';
-      d2.hash = bcrypt.hashSync('$uhm_pass', 12);
+      try { d2 = JSON.parse(fs.readFileSync(f2, "utf8")); } catch(_) {}
+      d2.username = d2.username || "admin";
+      d2.hash = bcrypt.hashSync(p2, 12);
       d2.passwordChangedAt = Date.now();
       fs.writeFileSync(f2, JSON.stringify(d2, null, 2), { mode: 0o600 });
-    "
+    ' "$DATA_DIR/admin.json" "$upanel_pass" "$DATA_DIR/uhm-admin.json" "$uhm_pass"
     echo -e "${GREEN}${BOLD}✓ Generated distinct passwords for both panels:${NC}"
     echo -e "  * UHM Admin (Port 2087)    : ${BOLD}${GREEN}${uhm_pass}${NC}"
     echo -e "  * uPanel Admin (Port 2083) : ${BOLD}${GREEN}${upanel_pass}${NC}"
