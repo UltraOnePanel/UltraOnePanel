@@ -545,6 +545,7 @@ cat > /usr/local/bin/upanel << 'CLIEOF'
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
 DATA_DIR="/var/lib/facezila"
 INSTALL_DIR="/opt/facezila"
+export NODE_PATH="/opt/facezila/node_modules:$INSTALL_DIR/node_modules:${NODE_PATH:-}"
 
 show_info() {
   SERVER_IP=$(curl -s -m 4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || hostname -i 2>/dev/null | awk '{print $1}')
