@@ -28,7 +28,8 @@ echo -e "${GREEN}✓ Existing code backed up to: ${BACKUP_FILE}${NC}"
 # 2. Download latest release archive
 STAGE="$(mktemp -d)"
 echo "Downloading latest UltraOnePanel release package..."
-curl -k -fsSL "$RELEASE_URL" -o "$STAGE/ultraonepanel.tar.gz" 2>/dev/null || wget --no-check-certificate -qO "$STAGE/ultraonepanel.tar.gz" "$RELEASE_URL"
+DL_URL="${RELEASE_URL}?t=$(date +%s)"
+curl -k -fsSL "$DL_URL" -o "$STAGE/ultraonepanel.tar.gz" 2>/dev/null || wget --no-check-certificate -qO "$STAGE/ultraonepanel.tar.gz" "$DL_URL"
 tar -xzf "$STAGE/ultraonepanel.tar.gz" -C "$STAGE"
 
 # 3. Replace application files safely (keeping .env, SSL, and data intact)
@@ -37,12 +38,12 @@ rm -rf "$INSTALL_DIR/src" "$INSTALL_DIR/dist" "$INSTALL_DIR/whm-dist" "$INSTALL_
 [ -f "$STAGE/server.bundle.js" ] && cp -f "$STAGE/server.bundle.js" "$INSTALL_DIR/"
 [ -f "$STAGE/server.js" ] && cp -f "$STAGE/server.js" "$INSTALL_DIR/"
 [ -d "$STAGE/src" ] && cp -r "$STAGE/src" "$INSTALL_DIR/" || true
-[ -d "$STAGE/templates" ] && cp -r "$STAGE/templates" "$INSTALL_DIR/" || true
-[ -d "$STAGE/migrations" ] && cp -r "$STAGE/migrations" "$INSTALL_DIR/" || true
+[ -d "$STAGE/templates" ] && rm -rf "$INSTALL_DIR/templates" && cp -r "$STAGE/templates" "$INSTALL_DIR/" || true
+[ -d "$STAGE/migrations" ] && rm -rf "$INSTALL_DIR/migrations" && cp -r "$STAGE/migrations" "$INSTALL_DIR/" || true
 cp -r "$STAGE/package.json" "$INSTALL_DIR/"
 [ -f "$STAGE/package-lock.json" ] && cp "$STAGE/package-lock.json" "$INSTALL_DIR/"
-[ -d "$STAGE/dist" ] && cp -r "$STAGE/dist" "$INSTALL_DIR/dist" && cp -r "$STAGE/dist" "$INSTALL_DIR/frontend/dist" 2>/dev/null || true
-[ -d "$STAGE/whm-dist" ] && cp -r "$STAGE/whm-dist" "$INSTALL_DIR/whm-dist" && cp -r "$STAGE/whm-dist" "$INSTALL_DIR/whm-frontend/dist" 2>/dev/null || true
+[ -d "$STAGE/dist" ] && mkdir -p "$INSTALL_DIR/frontend" && cp -r "$STAGE/dist" "$INSTALL_DIR/dist" && cp -r "$STAGE/dist" "$INSTALL_DIR/frontend/dist" 2>/dev/null || true
+[ -d "$STAGE/whm-dist" ] && mkdir -p "$INSTALL_DIR/whm-frontend" && cp -r "$STAGE/whm-dist" "$INSTALL_DIR/whm-dist" && cp -r "$STAGE/whm-dist" "$INSTALL_DIR/whm-frontend/dist" 2>/dev/null || true
 sed -i 's|/src/server.js|/server.bundle.js|g' /etc/systemd/system/facezila.service 2>/dev/null || true
 
 # 4. Install or update upanel CLI command utility
