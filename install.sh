@@ -14,7 +14,8 @@ die()  { echo -e "${RED}[ERROR] $*${NC}"; exit 1; }
 
 INSTALL_DIR="/opt/facezila"
 DATA_DIR="/var/lib/facezila"
-RELEASE_URL="${RELEASE_URL:-https://raw.githubusercontent.com/UltraOnePanel/UltraOnePanel/main/ultraonepanel-latest.tar.gz}"
+RELEASE_URL="${RELEASE_URL:-https://install.ultraonepanel.com/ultraonepanel-latest.tar.gz}"
+GITHUB_FALLBACK_URL="https://raw.githubusercontent.com/UltraOnePanel/UltraOnePanel/main/ultraonepanel-latest.tar.gz"
 export DEBIAN_FRONTEND=noninteractive
 
 # 1. Privileges & OS verification
@@ -356,7 +357,7 @@ nginx -t && systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev
 # 4. Download and Install Pre-compiled Package
 step "[3/6] Downloading UltraOnePanel pre-compiled package"
 mkdir -p "$INSTALL_DIR" "$DATA_DIR" /var/log/facezila /etc/facezila/ssl
-curl -k -fsSL "$RELEASE_URL" -o /tmp/ultraonepanel.tar.gz 2>/dev/null || wget --no-check-certificate -qO /tmp/ultraonepanel.tar.gz "$RELEASE_URL"
+curl -k -fsSL "$RELEASE_URL" -o /tmp/ultraonepanel.tar.gz 2>/dev/null || curl -k -fsSL "$GITHUB_FALLBACK_URL" -o /tmp/ultraonepanel.tar.gz 2>/dev/null || wget --no-check-certificate -qO /tmp/ultraonepanel.tar.gz "$RELEASE_URL"
 tar -xzf /tmp/ultraonepanel.tar.gz -C "$INSTALL_DIR"
 rm -f /tmp/ultraonepanel.tar.gz
 
