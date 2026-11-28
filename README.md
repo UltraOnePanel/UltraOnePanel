@@ -1,119 +1,96 @@
 # UltraOnePanel
 
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%20%7C%2024.04%20LTS-E95420?logo=ubuntu&logoColor=white)](https://ultraonepanel.com/docs.php)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-demo.ultraonepanel.com-f97316)](https://demo.ultraonepanel.com)
+[![Docs](https://img.shields.io/badge/Docs-ultraonepanel.com%2Fdocs.php-0ea5e9)](https://ultraonepanel.com/docs.php)
+[![GitHub](https://img.shields.io/badge/GitHub-UltraOnePanel-181717?logo=github)](https://github.com/UltraOnePanel/UltraOnePanel)
+
 > **Next-Generation Cloud Web Hosting & Server Management Suite**  
-> Complete cPanel® & WHM® alternative designed for Ubuntu 22.04 LTS and 24.04 LTS.
+> Complete **uPanel** (end-user hosting console) + **UHM** (WebHost Manager & reseller admin) built for Ubuntu 22.04 LTS & 24.04 LTS.
+
+- 🌐 **Website:** [https://ultraonepanel.com](https://ultraonepanel.com)
+- 🖥️ **Live Demo:** [https://demo.ultraonepanel.com](https://demo.ultraonepanel.com) (`admin` / `demo1234`)
+- 📖 **Documentation:** [https://ultraonepanel.com/docs.php](https://ultraonepanel.com/docs.php)
 
 ---
 
-## 🚀 Quick Install (Fresh Server)
+## 🚀 1-Command Install (Fresh Ubuntu 22.04 / 24.04)
 
-Run this one-line command as `root` on any clean **Ubuntu 22.04** or **Ubuntu 24.04 LTS** server:
+Run as `root` on any clean **Ubuntu 22.04** or **Ubuntu 24.04 LTS** server:
 
+```bash
+curl -sSO https://install.ultraonepanel.com/install.sh && bash install.sh
+```
+
+*(GitHub mirror)*:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/UltraOnePanel/UltraOnePanel/main/install.sh | sudo bash
 ```
 
-Upon completion, the installer automatically generates a cryptographically secure random administrator password and displays all URLs and credentials on your terminal.
+Upon completion, the installer generates a cryptographically secure admin password and prints your **UHM (`:2087`)**, **uPanel (`:2083`)**, and **Webmail (`:2096/mailbox/`)** URLs.
 
 ---
 
-## 🔄 How to Upgrade an Existing Server
+## 🔄 Upgrade & Uninstall
 
-To upgrade an existing installation to the latest version **without losing any website files, databases, or settings**, run this command as `root` via SSH:
-
+### Upgrade an Existing Server (Zero Data Loss)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/UltraOnePanel/UltraOnePanel/main/upgrade.sh | sudo bash
+curl -fsSL https://install.ultraonepanel.com/upgrade.sh | sudo bash
 ```
+Preserves all websites (`/www/wwwroot/*`), databases, email mailboxes, DNS zones, `.env`, and SSL certificates.
 
-### Or Upgrade via the Web Panel
-You can also upgrade with one click directly inside the panel:
-1. Log in to **uPanel** (`:2083`) or **UHM** (`:2087`) as `admin`.
-2. Navigate to **Preferences** → **System Updates** (`/preferences/updates`).
-3. Click **Check for Updates** and then **Apply Update**.
-
-### What the Upgrade preserves:
-- ✅ **100% Zero Data Loss:** All domains, websites (`/www/wwwroot/*`), databases, user accounts, DNS zones, and email inboxes remain completely untouched.
-- ✅ **Automated Backup:** Automatically generates a safety rollback archive in `/var/backups/facezila/` before applying changes.
-- ✅ **Zero Config Overwrite:** Retains your `.env` configuration, license tokens, and SSL certificates.
-
----
-
-## 🛠️ CLI Management (`upanel` Command Utility)
-
-UltraOnePanel includes a dedicated command-line utility for instant server and credential management:
-
+### Uninstall
 ```bash
-# View all login URLs, ports, username, and password
-upanel info
-# (alias: upanel default or facezila info)
-
-# Change or auto-generate a strong admin password
-upanel password <new_password>
-# (leaving password blank automatically generates a fresh 16-character secure password)
-
-# Check all listening control panel and service ports
-upanel ports
-
-# Check system health and running services (nginx, mariadb, dovecot, etc.)
-upanel status
-
-# Restart the UltraOnePanel service
-upanel restart
-
-# Update panel to the latest version via CLI
-upanel update
-
-# Check current version
-upanel version
+curl -sSO https://install.ultraonepanel.com/uninstall.sh && bash uninstall.sh
 ```
 
 ---
 
-## 🌐 Panel Access & Standard Ports
+## 📸 Screenshots
 
-| Interface | Port (SSL) | Port (HTTP Redirect) | Purpose |
-| :--- | :--- | :--- | :--- |
-| **UHM (WebHost Manager)** | `:2087` | `:2086` | Server, Reseller & Account Administration |
-| **uPanel (Client Panel)** | `:2083` | `:2082` | Website, Files, Databases & Email Management |
-| **Webmail (Roundcube)** | `:2096` | `:2095` | Secure Webmail Client |
-| **phpMyAdmin** | `https://<IP>:2083/phpmyadmin/` | — | MySQL / MariaDB Database Manager |
-| **phpPgAdmin** | `https://<IP>:2083/phppgadmin/` | — | PostgreSQL Database Manager |
-| **Web Traffic** | `:443` | `:80` | Public Website HTTP / HTTPS Traffic |
-| **FTP** | `:21` | — | Secure File Transfer Protocol |
-| **DNS** | `:53` | — | BIND9 Authoritative Nameserver |
+| **uPanel End-User Dashboard (`:2083`)** | **UHM Account Management (`:2087`)** |
+| :---: | :---: |
+| ![uPanel Dashboard](https://ultraonepanel.com/upanel-screenshot.png) | ![UHM Accounts](https://ultraonepanel.com/uhm-panel-account-screenshot.png) |
 
-- **Default Admin User:** `admin`
-- **Default Password:** Cryptographically generated on first setup (view anytime with `upanel info` or check `/root/upanel_login.txt`)
+| **File Manager & Code Editor** | **Database & phpMyAdmin Suite** |
+| :---: | :---: |
+| ![File Manager](https://ultraonepanel.com/upanel-filemanager-screenshot.png) | ![Databases](https://ultraonepanel.com/upanel-database-screenshot.png) |
+
+| **Security & SSL Center** | **Automated Backup & Restore** |
+| :---: | :---: |
+| ![Security](https://ultraonepanel.com/upanel-security-screenshot.png) | ![Backups](https://ultraonepanel.com/upanel-backup-screenshot.png) |
 
 ---
 
-## 📦 Key Features
+## ⚖️ Comparison: UltraOnePanel vs cPanel / Plesk / CyberPanel
 
-- **Multi-PHP Selector:** Full support for PHP 7.2, 7.3, 7.4, 8.0, 8.1, 8.2, 8.3, 8.4, and 8.5 with live extension toggles and per-domain inheritance.
-- **Relational Databases:** MySQL, MariaDB, and PostgreSQL with one-click phpMyAdmin / phpPgAdmin integration.
-- **Email Infrastructure:** Postfix & Dovecot IMAP/POP3, DKIM, SPF, and automatic mail routing.
-- **DNS Server:** BIND9 DNS management with automated zone provisioning.
-- **Free Automated SSL:** One-click Let's Encrypt / Certbot SSL certificate issuance and auto-renewal.
-- **Isolated Developer Terminal:** Real PTY WebSocket terminal with domain chroot isolation.
-- **Security:** UFW firewall and Fail2ban brute-force protection.
+| Feature | **UltraOnePanel** | **cPanel / WHM** | **Plesk** | **CyberPanel** |
+| :--- | :---: | :---: | :---: | :---: |
+| **1-Command Ubuntu 22.04 / 24.04 Install** | ✅ Yes | ✅ Alma/Ubuntu | ✅ Yes | ✅ Yes |
+| **End-User + Admin/Reseller Split (`:2083` / `:2087`)** | ✅ Built-in | ✅ Built-in | ⚠️ Single UI | ⚠️ Single UI |
+| **Native Nginx + FastCGI Cache Manager** | ✅ Built-in | ❌ Add-on | ⚠️ Paid Extension | ⚠️ OpenLiteSpeed |
+| **Multi-PHP (7.4 – 8.4) + Node.js / Python Apps** | ✅ Built-in | ⚠️ CloudLinux/Paid | ✅ Yes | ⚠️ Limited |
+| **WebSocket Terminal & SSH Access Control** | ✅ Per-Account Toggle | ✅ Built-in | ✅ Extension | ❌ No |
+| **Custom Branded Webmail (`/mailbox/` on `:2096`)** | ✅ Roundcube + SSO | ✅ Roundcube | ✅ Roundcube | ⚠️ RainLoop |
+| **Built-in cPanel `.tar.gz` Migration** | ✅ Included | ✅ Native | ✅ Paid/Migrator | ❌ Manual |
+| **AutoSSL (Let's Encrypt) + DNS Zone Editor** | ✅ Included | ✅ Included | ✅ Included | ✅ Included |
+| **Pricing** | 💚 **Fraction of cPanel** | 💸 High per-account | 💸 Per-domain tiers | 🆓 / Paid Enterprise |
 
 ---
 
-## 📋 Service Management
+## 🛠️ CLI Management (`upanel`) & Ports
 
 ```bash
-# Check panel status
-systemctl status facezila
-
-# Restart panel
-systemctl restart facezila
-
-# View real-time logs
-journalctl -u facezila -f
+upanel info       # Show login URLs, ports, and credentials
+upanel status     # Check panel & system services
+upanel password   # Reset or auto-generate strong admin password
+upanel update     # Update to latest release
 ```
 
----
+| Service | HTTPS Port | Purpose |
+| :--- | :---: | :--- |
+| **UHM (Admin / Reseller)** | `:2087` | Server, Packages, Accounts & DNS |
+| **uPanel (Client Panel)** | `:2083` | Sites, Files, Databases, Cache & Email |
+| **Webmail (`/mailbox/`)** | `:2096` | Branded Roundcube Webmail & SSO |
 
-## 📄 License
-
-Proprietary Software — All rights reserved © UltraOnePanel.
+Full documentation: **[https://ultraonepanel.com/docs.php](https://ultraonepanel.com/docs.php)** · Live Sandbox: **[https://demo.ultraonepanel.com](https://demo.ultraonepanel.com)**
